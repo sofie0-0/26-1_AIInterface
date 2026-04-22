@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd canvas-react && npm install && npm run build",
+  "outputDirectory": "canvas-react/dist",
+  "installCommand": "echo skip",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

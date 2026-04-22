@@ -1,0 +1,418 @@
+@import "tailwindcss";
+
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+    --social-bg: rgba(47, 48, 58, 0.5);
+    --shadow:
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  }
+
+  #social .button-icon {
+    filter: invert(1) brightness(2);
+  }
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  width: 100%;         /* 1126px 대신 100%로 변경 */
+  min-height: 100vh;   /* 화면 높이 꽉 채우기 */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;           /* 여백 제거 */
+  padding: 0;          /* 패딩 제거 */
+  text-align: left;    /* 글자 왼쪽 정렬로 변경 */
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
+
+/* Center panel: AI 답변 마크다운 (react-markdown) */
+.ai-markdown-wrap {
+  line-height: 1.75;
+}
+
+.ai-markdown {
+  font-size: 14px;
+  line-height: 1.75;
+  color: #1e293b;
+}
+
+.ai-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.ai-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4,
+.ai-markdown h5,
+.ai-markdown h6 {
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+  margin: 1rem 0 0.45rem;
+}
+
+.ai-markdown h1 {
+  font-size: 1.35rem;
+}
+.ai-markdown h2 {
+  font-size: 1.2rem;
+}
+.ai-markdown h3 {
+  font-size: 1.08rem;
+}
+.ai-markdown h4 {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.ai-markdown p {
+  margin: 0.55em 0;
+}
+
+.ai-markdown ul,
+.ai-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.35em;
+}
+
+.ai-markdown li {
+  margin: 0.35em 0;
+}
+
+.ai-markdown li > p {
+  margin: 0.25em 0;
+}
+
+.ai-markdown ul {
+  list-style-type: disc;
+}
+
+.ai-markdown ol {
+  list-style-type: decimal;
+}
+
+.ai-markdown strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ai-markdown a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ai-markdown code {
+  font-size: 0.88em;
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: #f1f5f9;
+}
+
+.ai-markdown pre {
+  margin: 0.65em 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 0.86em;
+}
+
+.ai-markdown blockquote {
+  margin: 0.65em 0;
+  padding: 0.35em 0 0.35em 0.85em;
+  border-left: 3px solid #cbd5e1;
+  color: #475569;
+}
+
+.ai-markdown hr {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+/* 우측 추가 질문(사이드챗) AI 답변 마크다운 — 밀도·가독성 최적화 */
+.side-chat-markdown-wrap {
+  line-height: 1.45;
+}
+
+.side-chat-markdown {
+  font-size: 14px;
+  line-height: 1.45;
+  /* 짙은 회색: 완전한 검정보다 부드럽고, 메인 패널과 시각적으로 구분 */
+  color: #374151;
+}
+
+.side-chat-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.side-chat-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+/* 문단 간격: 메인 패널(.ai-markdown p = 0.55em)의 약 70% */
+.side-chat-markdown p {
+  margin: 0.38em 0;
+}
+
+/* 최상위 번호 목록: 본문과 구분되는 왼쪽 여백 */
+.side-chat-markdown > ol {
+  margin: 0.28em 0;
+  padding-left: 1.55em;
+}
+
+.side-chat-markdown > ul {
+  margin: 0.28em 0;
+  padding-left: 1.35em;
+}
+
+/* 중첩·일반 리스트 */
+.side-chat-markdown ul,
+.side-chat-markdown ol {
+  margin: 0.22em 0;
+}
+
+.side-chat-markdown ul {
+  padding-left: 1.25em;
+  list-style-type: disc;
+}
+
+.side-chat-markdown ol {
+  padding-left: 1.45em;
+  list-style-type: decimal;
+}
+
+/* 번호(ol) 항목: 큰 블록 간만 약간 간격 */
+.side-chat-markdown ol > li {
+  margin: 0.32em 0 0.4em;
+  line-height: 1.45;
+}
+
+/* 번호 항목 아래 들여쓴 불렛 — 계층이 한눈에 들어오도록 */
+.side-chat-markdown ol > li > ul {
+  margin: 0.18em 0 0.12em;
+  padding-left: 1.4em;
+}
+
+.side-chat-markdown ol > li > ul > li {
+  margin: 0.12em 0;
+  line-height: 1.45;
+}
+
+/* 일반 ul li (단독 불렛 목록) */
+.side-chat-markdown li {
+  margin: 0.18em 0;
+  line-height: 1.45;
+}
+
+.side-chat-markdown li > p {
+  margin: 0.12em 0;
+}
+
+.side-chat-markdown ol > li > p:first-child {
+  margin-top: 0;
+}
+
+/* strong: 확실한 검정으로 본문 회색과 시각적 위계 형성 */
+.side-chat-markdown strong {
+  font-weight: 700;
+  color: #111827;
+  font-size: inherit; /* 글자 크기 유지 */
+}
+
+.side-chat-markdown code {
+  font-size: 0.86em;
+  padding: 0.1em 0.32em;
+  border-radius: 4px;
+  background: #f1f5f9;
+}
+
+.side-chat-markdown pre {
+  margin: 0.4em 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+
+.side-chat-markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+/* 활성 하이라이트 텍스트 — transform: scale() 로만 확대 (레이아웃 무변화) */
+.hl-text-scale-active {
+  display: inline-block;
+  transform: scale(1.06);
+  transform-origin: center center;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  z-index: 5;
+  will-change: transform;
+}
+
+/* 하이라이트 칩 — 기본 hover 트랜지션 */
+.hl-chip {
+  transition:
+    transform        0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow       0.22s ease,
+    background-color 0.22s ease;
+}
+
+/* 하이라이트 위에 마우스를 올렸을 때 */
+.hl-chip:hover {
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
+}
+
+/* 포스트잇 위에 마우스를 올렸을 때 대응 하이라이트 강조 */
+.hl-hover-active {
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.13);
+}
+
+/* 포스트잇 클릭 시 하이라이트 확대+Floating 강조 애니메이션 (3초) */
+@keyframes hl-scale-pulse {
+  0%  {
+    transform:  scale(1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  8%  {
+    transform:  scale(1.05);
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.18),
+      0 2px  6px rgba(0, 0, 0, 0.12);
+  }
+  75% {
+    transform:  scale(1.05);
+    box-shadow:
+      0 6px 18px rgba(0, 0, 0, 0.18),
+      0 2px  6px rgba(0, 0, 0, 0.12);
+  }
+  100% {
+    transform:  scale(1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.hl-flash-scale {
+  animation: hl-scale-pulse 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform-origin: center center;
+  will-change: transform, box-shadow;
+  /* 애니메이션 중에는 transition 비활성화 */
+  transition: none !important;
+}
+
+/* 플로팅 ID 칩 — 여러 링크가 있을 때 텍스트 클릭 시 선택 유도 바운스 */
+@keyframes chip-prompt-bounce {
+  0%   { transform: scale(1)    translateY(0); }
+  30%  { transform: scale(1.3)  translateY(-5px); }
+  60%  { transform: scale(1.15) translateY(-2px); }
+  100% { transform: scale(1)    translateY(0); }
+}
+
+.chip-prompt-pulse {
+  animation: chip-prompt-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 2;
+  will-change: transform;
+}

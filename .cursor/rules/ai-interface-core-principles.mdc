@@ -1,0 +1,83 @@
+---
+description: Nonlinear AI interface core implementation rules
+alwaysApply: true
+---
+
+# 비선형 AI 인터페이스 핵심 규칙
+
+이 프로젝트는 비선형 AI 인터페이스 연구를 위한 HCI 프로토타입이다. 모든 구현은 포스트잇(Notes)과 텍스트 하이라이트 연결 중심으로 유지한다.
+
+## 상태 관리
+
+- 기존 상태를 잃지 않도록 상태 업데이트 시 객체 펼침 연산자 `...prev`를 우선 사용한다.
+- 새 기능 추가 시 기존 포스트잇 위치와 하이라이트 연결 상태가 유실되지 않도록 변경 전후 데이터 병합을 검증한다.
+
+```javascript
+// 권장 패턴
+setHighlightMap((prev) => ({
+  ...prev,
+  [highlightId]: {
+    ...prev[highlightId],
+    noteIds: [...(prev[highlightId]?.noteIds ?? []), newNoteId],
+  },
+}));
+```
+
+## 기술 스택 및 좌표 계산
+
+- 기본 스택은 React(Vite) + Tailwind CSS를 사용한다.
+- 하이라이트/숫자 칩 위치는 `getBoundingClientRect()` 기반 동적 좌표 계산을 사용한다.
+- 미세한 위치 보정이 필요하면 Inline Style 사용을 허용한다.
+
+## 마크다운 및 오프셋 계산
+
+- AI 답변 렌더링은 `react-markdown` + `rehype-raw` 조합을 사용한다.
+- 하이라이트 오프셋은 `####`, `**` 같은 마크다운 기호를 제외한 실제 보이는 텍스트(Visible Text) 기준으로 계산한다.
+
+## 데이터 구조 규칙 (필수)
+
+- 하이라이트와 포스트잇은 일대다 관계를 지원해야 하므로 `noteId`(단일값) 대신 `noteIds`(숫자 배열)를 유지한다.
+- 숫자 칩 렌더링 순서는 항상 오름차순 정렬을 유지한다.
+
+```javascript
+const sortedNoteIds = [...noteIds].sort((a, b) => a - b);
+```
+
+## 색상 체계
+
+- 메모만 있는 경우: 노란색 칩
+- 추가 질문만 있는 경우: 파란색 칩
+- 둘 다 있는 경우: 하이라이트는 초록색, 칩은 노란색과 파란색을 모두 렌더링
+
+## UI/UX 상호작용
+
+- 하이라이트 클릭 시 연결된 숫자 칩이 강조되는 애니메이션 피드백을 제공한다.
+- AI 답변 생성은 스트리밍 방식으로 실시간 텍스트 출력 UX를 유지한다.
+
+## Gemini API 호출 규칙 (필수)
+
+이 프로젝트는 `GEMINI_API_VERSION = 'v1'`을 사용한다. **v1 엔드포인트는 `config.systemInstruction`을 지원하지 않으며**, 이 필드를 넘기면 400 `INVALID_ARGUMENT` 오류가 발생한다.
+
+### 시스템 지침 전달 방법
+
+`ai.chats.create` 또는 `ai.models.generateContentStream` 호출 시 시스템 지침은 반드시 **`history` 배열 맨 앞에 user/model 쌍으로 삽입**한다.
+
+```javascript
+// ✅ 올바른 방법 — history 앞에 삽입
+const fullHistory = [
+  { role: 'user',  parts: [{ text: systemInstruction }] },
+  { role: 'model', parts: [{ text: '네, 위 지침에 따라 답변하겠습니다.' }] },
+  ...conversationHistory,
+];
+const chatSession = ai.chats.create({ model, history: fullHistory });
+
+// ❌ 금지 — v1에서 400 오류 발생
+const chatSession = ai.chats.create({
+  model,
+  config: { systemInstruction },  // v1 미지원
+  history: conversationHistory,
+});
+```
+
+- `ai.models.generateContentStream`의 `config.systemInstruction`도 동일하게 v1에서 동작하지 않는다.
+- API 버전을 `v1beta`로 올리지 않는 한 이 제약을 유지한다.
