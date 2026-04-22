@@ -27,7 +27,7 @@ import rehypeRaw from 'rehype-raw';
 
 /* ─────────────────── 상수 ─────────────────── */
 const GEMINI_API_VERSION = 'v1';
-const GEMINI_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-2.5-flash'];
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 /** 추가 질문(사이드챗) 전용 시스템 지침 — 번호 항목 + 들여쓴 불렛 계층 */
 const SIDE_CHAT_SYSTEM_INSTRUCTION_BASE =
@@ -591,7 +591,7 @@ export default function NonLinearChatInterface() {
   useEffect(() => {
     if (import.meta.env.DEV) {
       console.log('API 키 로드:', apiKey ? '✅' : '❌');
-      console.log('모델 후보:', GEMINI_MODEL_CANDIDATES.join(', '));
+      console.log('사용 모델:', GEMINI_MODEL);
     }
   }, [apiKey]);
 
@@ -1024,25 +1024,17 @@ export default function NonLinearChatInterface() {
 
     try {
       if (!ai) throw new Error('API 키 없음');
-      let done = false;
-      for (const model of GEMINI_MODEL_CANDIDATES) {
-        try {
-          const stream = await ai.models.generateContentStream({
-            model,
-            contents: [{ role: 'user', parts: [{ text }] }],
-          });
-          let full = '';
-          for await (const chunk of stream) {
-            full += chunk.text ?? '';
-            setMainMessages((prev) =>
-              prev.map((m) => (m.id === aiMsgId ? { ...m, text: full } : m))
-            );
-          }
-          done = true;
-          break;
-        } catch (err) { console.error(err); }
+      const stream = await ai.models.generateContentStream({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text }] }],
+      });
+      let full = '';
+      for await (const chunk of stream) {
+        full += chunk.text ?? '';
+        setMainMessages((prev) =>
+          prev.map((m) => (m.id === aiMsgId ? { ...m, text: full } : m))
+        );
       }
-      if (!done) throw new Error('모든 모델 실패');
     } catch (err) {
       setMainMessages((prev) =>
         prev.map((m) =>
@@ -1104,30 +1096,22 @@ ${mainCtx}`;
         ...conversationHistory,
       ];
 
-      let done = false;
-      for (const model of GEMINI_MODEL_CANDIDATES) {
-        try {
-          const chatSession = ai.chats.create({
-            model,
-            history: fullHistory,
-          });
-          const stream = await chatSession.sendMessageStream({ message: text });
-          let full = '';
-          for await (const chunk of stream) {
-            full += chunk.text ?? '';
-            setSideChats((prev) =>
-              prev.map((c) =>
-                c.id === chatId
-                  ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
-                  : c
-              )
-            );
-          }
-          done = true;
-          break;
-        } catch (err) { console.error(err); }
+      const chatSession = ai.chats.create({
+        model: GEMINI_MODEL,
+        history: fullHistory,
+      });
+      const stream = await chatSession.sendMessageStream({ message: text });
+      let full = '';
+      for await (const chunk of stream) {
+        full += chunk.text ?? '';
+        setSideChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
+              : c
+          )
+        );
       }
-      if (!done) throw new Error('모든 모델 실패');
     } catch (err) {
       setSideChats((prev) =>
         prev.map((c) =>
@@ -1177,24 +1161,19 @@ ${mainCtx}`;
         .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
       history.push({ role: 'user', parts: [{ text }] });
 
-      for (const model of GEMINI_MODEL_CANDIDATES) {
-        try {
-          const stream = await ai.models.generateContentStream({
-            model, config: { systemInstruction: sysInstr }, contents: history,
-          });
-          let full = '';
-          for await (const chunk of stream) {
-            full += chunk.text ?? '';
-            setNotes((prev) =>
-              prev.map((n) =>
-                n.id === noteId
-                  ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
-                  : n
-              )
-            );
-          }
-          break;
-        } catch (err) { console.error(err); }
+      const noteStream = await ai.models.generateContentStream({
+        model: GEMINI_MODEL, config: { systemInstruction: sysInstr }, contents: history,
+      });
+      let full = '';
+      for await (const chunk of noteStream) {
+        full += chunk.text ?? '';
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === noteId
+              ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
+              : n
+          )
+        );
       }
     } catch (err) {
       setNotes((prev) =>

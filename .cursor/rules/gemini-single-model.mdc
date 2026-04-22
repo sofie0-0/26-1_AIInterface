@@ -1,0 +1,43 @@
+---
+description: Enforce single Gemini model usage to prevent 429 rate limit errors
+globs: canvas-react/src/**/*.{js,jsx,ts,tsx}
+alwaysApply: false
+---
+
+# Gemini 단일 모델 사용 규칙
+
+이 프로젝트는 **`gemini-2.5-flash` 단일 모델**만 사용한다.
+
+## 금지 패턴
+
+```js
+// ❌ BAD: 모델 배열 + fallback 루프
+const GEMINI_MODEL_CANDIDATES = ['gemini-2.0-flash', 'gemini-2.5-flash'];
+for (const model of GEMINI_MODEL_CANDIDATES) {
+  try {
+    await ai.models.generateContentStream({ model, ... });
+    break;
+  } catch (err) { console.error(err); }
+}
+```
+
+이 패턴은 첫 번째 모델이 성공해도 API를 이중으로 호출하거나, 실패 시 연속 재시도로 **429 (Too Many Requests)** 에러를 유발한다.
+
+## 올바른 패턴
+
+```js
+// ✅ GOOD: 단일 상수 + 직접 호출
+const GEMINI_MODEL = 'gemini-2.5-flash';
+
+const stream = await ai.models.generateContentStream({
+  model: GEMINI_MODEL,
+  contents: [...],
+});
+```
+
+## 규칙 요약
+
+- 모델명은 `GEMINI_MODEL` 상수 하나로 관리한다.
+- 모델 배열(`GEMINI_MODEL_CANDIDATES` 등)을 만들지 않는다.
+- AI 호출 시 `for` 루프로 여러 모델을 순회하는 fallback 로직을 추가하지 않는다.
+- 사용 모델을 변경할 때는 `GEMINI_MODEL` 상수 값만 수정한다.
