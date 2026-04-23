@@ -10,7 +10,7 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
-  Crosshair,
+  MoveUpRight,
   GripHorizontal,
   Menu,
   MessageSquare,
@@ -1444,7 +1444,7 @@ ${mainCtx}`;
                         className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
                         title="본문으로 이동"
                       >
-                        <Crosshair className="w-3.5 h-3.5" />
+                        <MoveUpRight className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleNoteCollapse(note.id); }}
@@ -1694,7 +1694,14 @@ ${mainCtx}`;
                       {chat.title}
                     </span>
                     <button
-                      className="ml-0.5 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
+                      className="ml-0.5 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
+                      onClick={(e) => { e.stopPropagation(); scrollToHighlight(chat.id); }}
+                      title="본문으로 이동"
+                    >
+                      <MoveUpRight className="w-3 h-3" />
+                    </button>
+                    <button
+                      className="ml-0.5 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
                       onClick={(e) => { e.stopPropagation(); removeSideChat(chat.id); }}
                     >
                       <X className="w-3 h-3" />
@@ -1711,13 +1718,6 @@ ${mainCtx}`;
                 <div className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100">
                   <div className="flex items-center justify-between mb-0.5">
                     <p className="text-[11px] font-semibold text-cyan-600 uppercase tracking-wide">참조 텍스트</p>
-                    <button
-                      onClick={() => scrollToHighlight(activeThread.id)}
-                      className="p-1 hover:bg-cyan-100 rounded-md text-cyan-400 hover:text-cyan-700 transition-colors"
-                      title="본문으로 이동"
-                    >
-                      <Crosshair className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                   <p className="text-[13px] text-slate-700 leading-snug line-clamp-2">
                     &ldquo;{activeThread.sourceText}&rdquo;
