@@ -10,6 +10,7 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
+  Crosshair,
   GripHorizontal,
   Menu,
   MessageSquare,
@@ -217,35 +218,9 @@ function MessageTextWithHighlightOverlays({
   const localHoveredHlIdRef = useRef(null);
   const scaleSpanRef        = useRef(null);
 
-  /* ── Hover Bridge: 칩 영역으로 마우스를 이동하는 동안 칩이 사라지지 않도록 유예 처리 ── */
-  const hideTimerRef        = useRef(null);
-  const isMouseOverChipRef  = useRef(false);
-  // onHighlightLeave가 재생성되어도 타이머 콜백이 최신 버전을 참조하도록 ref 사용
+  // onHighlightLeave의 최신 버전을 ref로 유지 (useCallback 의존성 최소화)
   const onHighlightLeaveRef = useRef(onHighlightLeave);
   useEffect(() => { onHighlightLeaveRef.current = onHighlightLeave; }, [onHighlightLeave]);
-
-  // 500ms 뒤에 호버 상태를 해제 (타이머 중 칩 위로 이동하면 취소됨)
-  const scheduleHide = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => {
-      if (!isMouseOverChipRef.current) {
-        localHoveredHlIdRef.current = null;
-        setLocalHoveredHlId(null);
-        onHighlightLeaveRef.current();
-      }
-      hideTimerRef.current = null;
-    }, 500);
-  }, []);
-
-  const cancelHide = useCallback(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-
-  // 언마운트 시 타이머 정리
-  useEffect(() => () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }, []);
 
   /* ── 하이라이트 rect 측정 ── */
   const measure = useCallback(() => {
@@ -336,8 +311,16 @@ function MessageTextWithHighlightOverlays({
 
       let foundId = null;
       outer: for (const { hl, rects } of boxes) {
-        for (const r of rects) {
-          if (mx >= r.left && mx <= r.left + r.width && my >= r.top && my <= r.top + r.height) {
+        for (let ri = 0; ri < rects.length; ri++) {
+          const r = rects[ri];
+          // 첫 번째 rect는 위로 32px 확장 → 플로팅 칩까지 호버 영역에 포함 (타이머 불필요)
+          const topPad = ri === 0 ? 32 : 2;
+          if (
+            mx >= r.left - 4 &&
+            mx <= r.left + r.width + 4 &&
+            my >= r.top - topPad &&
+            my <= r.top + r.height + 2
+          ) {
             foundId = hl.id;
             break outer;
           }
@@ -345,27 +328,26 @@ function MessageTextWithHighlightOverlays({
       }
 
       if (foundId !== localHoveredHlIdRef.current) {
-        cancelHide();
+        localHoveredHlIdRef.current = foundId;
+        setLocalHoveredHlId(foundId);
         if (foundId) {
-          // 새 하이라이트 위로 진입: 즉시 활성화
-          localHoveredHlIdRef.current = foundId;
-          setLocalHoveredHlId(foundId);
           onHighlightHover(foundId);
-        } else if (!isMouseOverChipRef.current) {
-          // 하이라이트를 벗어났지만 칩 위가 아님: 500ms 유예 후 숨김
-          // (localHoveredHlIdRef는 유예 기간 동안 유지 → 칩이 클릭 가능 상태 유지)
-          scheduleHide();
+        } else {
+          onHighlightLeaveRef.current();
         }
       }
     },
-    [boxes, onHighlightHover, cancelHide, scheduleHide]
+    [boxes, onHighlightHover]
   );
 
-  // 메시지 body 전체를 벗어나면 즉시 칩 상태 초기화 예약
+  // 메시지 body를 벗어나면 즉시 칩 상태 초기화
   const handleBodyMouseLeave = useCallback(() => {
-    isMouseOverChipRef.current = false;
-    scheduleHide();
-  }, [scheduleHide]);
+    if (localHoveredHlIdRef.current !== null) {
+      localHoveredHlIdRef.current = null;
+      setLocalHoveredHlId(null);
+      onHighlightLeaveRef.current();
+    }
+  }, []);
 
   const handleBodyClick = useCallback(
     (e) => {
@@ -450,7 +432,7 @@ function MessageTextWithHighlightOverlays({
                 height:     r.height + 4,
                 background: bgColor,
                 borderRadius: 4,
-                transition: isMixed ? 'none' : 'background-color 0.2s ease',
+                transition: isMixed ? 'none' : 'background-color 0.22s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease',
               }}
             />
           ));
@@ -503,16 +485,6 @@ function MessageTextWithHighlightOverlays({
         return (
           <div
             key={`chips-${hl.id}`}
-            onMouseEnter={() => {
-              // 칩 영역에 진입하면 숨김 타이머를 취소하여 칩 유지
-              isMouseOverChipRef.current = true;
-              cancelHide();
-            }}
-            onMouseLeave={() => {
-              // 칩 영역을 완전히 벗어나면 500ms 유예 후 숨김
-              isMouseOverChipRef.current = false;
-              scheduleHide();
-            }}
             style={{
               position:     'absolute',
               left:         r0.left - PX,
@@ -664,6 +636,10 @@ export default function NonLinearChatInterface() {
   const [hoveredHighlightId,  setHoveredHighlightId]  = useState(null); // 텍스트 hover → 포스트잇 강조
   const [hoveredPostItId,     setHoveredPostItId]     = useState(null); // 포스트잇 hover → 하이라이트 강조 (= highlight.id)
 
+  /* 포스트잇 / 탭 로컬 hover (팝업 효과용) */
+  const [hoveredNoteId, setHoveredNoteId] = useState(null);
+  const [hoveredTabId,  setHoveredTabId]  = useState(null);
+
   /* 선택 메뉴 */
   const [selectionMenu, setSelectionMenu] = useState({
     visible: false, text: '', x: 0, y: 0, originY: 0,
@@ -785,7 +761,7 @@ export default function NonLinearChatInterface() {
     // 노트는 기존 방식대로 스크롤
     const el = postItRefs.current[id];
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setFlashingId(id);
       setTimeout(() => setFlashingId(null), 1500);
     }
@@ -1375,28 +1351,50 @@ ${mainCtx}`;
                 (hoveredHighlightId &&
                   highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === note.id));
 
+              const isLocalHovered = hoveredNoteId === note.id;
               const badgeNum = highlightIndexMap[note.id];
+
+              // 팝업 효과: drag > flash > localHover 순서로 우선순위
+              const noteTransform = isActiveDrag
+                ? 'scale(1.01)'
+                : isFlashing
+                  ? 'translateY(-3px) scale(1.03)'
+                  : isLocalHovered
+                    ? 'translateY(-2px) scale(1.01)'
+                    : 'none';
+              const noteShadow = isActiveDrag
+                ? 'rgba(0,0,0,0.10) 0px 8px 22px -10px, rgba(0,0,0,0.06) 0px 2px 6px 0px'
+                : isFlashing
+                  ? '0 12px 32px rgba(0,0,0,0.14), 0 4px 10px rgba(0,0,0,0.08)'
+                  : isLocalHovered
+                    ? '0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)'
+                    : 'rgba(0,0,0,0.05) 0px 1px 3px 0px';
+              const noteZ = isActiveDrag ? 40 : isFlashing ? 50 : isLocalHovered ? 35 : 30;
 
               return (
                 <div
                   key={note.id}
                   ref={(el) => (postItRefs.current[note.id] = el)}
-                  style={{ left: note.x, top: note.y, width: note.width || 250, height }}
+                  style={{
+                    left: note.x, top: note.y, width: note.width || 250, height,
+                    transform: noteTransform,
+                    boxShadow: noteShadow,
+                    zIndex: noteZ,
+                    transition: isActiveDrag ? 'none' : 'transform 0.2s ease, box-shadow 0.2s ease',
+                  }}
                   onClick={(e) => handlePostItClick(e, note.id)}
                   onMouseEnter={() => {
+                    setHoveredNoteId(note.id);
                     const hl = highlights.find((h) => h.links?.some((l) => l.id === note.id));
                     setHoveredPostItId(hl?.id ?? null);
                   }}
-                  onMouseLeave={() => setHoveredPostItId(null)}
+                  onMouseLeave={() => {
+                    setHoveredNoteId(null);
+                    setHoveredPostItId(null);
+                  }}
                   className={`absolute rounded-xl flex flex-col pointer-events-auto bg-yellow-100 ${
-                    isActiveDrag
-                      ? 'transition-none shadow-postit-lift scale-[1.01] z-40'
-                      : 'transition-all shadow-postit z-30'
-                  } ${isCollapsed ? 'overflow-hidden' : ''} ${
-                    isFlashing
-                      ? 'scale-[1.03] shadow-2xl z-50 border-slate-300'
-                      : 'border border-slate-200/80'
-                  }`}
+                    isCollapsed ? 'overflow-hidden' : ''
+                  } ${isFlashing ? 'border border-slate-300' : 'border border-slate-200/80'}`}
                 >
                   {!isCollapsed && (
                     <>
@@ -1440,6 +1438,14 @@ ${mainCtx}`;
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0 relative z-10">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); scrollToHighlight(note.id); }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                        title="본문으로 이동"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleNoteCollapse(note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
@@ -1639,19 +1645,42 @@ ${mainCtx}`;
                   (hoveredHighlightId &&
                     highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === chat.id));
 
+                const isTabHovered = hoveredTabId === chat.id;
+                const tabTransform = isFlashing
+                  ? 'translateY(-2px)'
+                  : isActive || isTabHovered
+                    ? 'translateY(-1px)'
+                    : 'none';
+                const tabShadow = isFlashing
+                  ? '0 4px 14px rgba(34,211,238,0.35)'
+                  : isActive
+                    ? '0 2px 8px rgba(34,211,238,0.20)'
+                    : isTabHovered
+                      ? '0 2px 6px rgba(0,0,0,0.08)'
+                      : 'none';
+
                 return (
                   <div
                     key={chat.id}
-                    className={`group relative flex items-center gap-1.5 px-3 py-2.5 cursor-pointer shrink-0 border-b-2 transition-all duration-150 select-none ${
+                    style={{
+                      transform: tabTransform,
+                      boxShadow: tabShadow,
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
+                    }}
+                    className={`group relative flex items-center gap-1.5 px-3 py-2.5 cursor-pointer shrink-0 border-b-2 select-none ${
                       isActive
                         ? 'border-cyan-500 bg-cyan-50/60 text-slate-900'
                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
                     } ${isFlashing ? 'bg-cyan-100/80' : ''}`}
                     onMouseEnter={() => {
+                      setHoveredTabId(chat.id);
                       const hl = highlights.find((h) => h.links?.some((l) => l.id === chat.id));
                       setHoveredPostItId(hl?.id ?? null);
                     }}
-                    onMouseLeave={() => setHoveredPostItId(null)}
+                    onMouseLeave={() => {
+                      setHoveredTabId(null);
+                      setHoveredPostItId(null);
+                    }}
                     onClick={() => setActiveSideChatId(chat.id)}
                   >
                     {badgeNum !== undefined && (
@@ -1679,12 +1708,17 @@ ${mainCtx}`;
             {activeThread && (
               <>
                 {/* 출처 텍스트 */}
-                <div
-                  className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100 cursor-pointer hover:bg-cyan-100/70 transition-colors"
-                  onClick={() => scrollToHighlight(activeThread.id)}
-                  title="원문으로 이동"
-                >
-                  <p className="text-[11px] font-semibold text-cyan-600 mb-0.5 uppercase tracking-wide">참조 텍스트</p>
+                <div className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <p className="text-[11px] font-semibold text-cyan-600 uppercase tracking-wide">참조 텍스트</p>
+                    <button
+                      onClick={() => scrollToHighlight(activeThread.id)}
+                      className="p-1 hover:bg-cyan-100 rounded-md text-cyan-400 hover:text-cyan-700 transition-colors"
+                      title="본문으로 이동"
+                    >
+                      <Crosshair className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <p className="text-[13px] text-slate-700 leading-snug line-clamp-2">
                     &ldquo;{activeThread.sourceText}&rdquo;
                   </p>
