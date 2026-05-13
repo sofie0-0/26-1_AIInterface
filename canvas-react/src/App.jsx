@@ -30,9 +30,42 @@ import rehypeRaw from 'rehype-raw';
 const GEMINI_API_VERSION = 'v1';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
-/** 추가 질문(사이드챗) 전용 시스템 지침 — 번호 항목 + 들여쓴 불렛 계층 */
-const SIDE_CHAT_SYSTEM_INSTRUCTION_BASE =
-  `너는 학습 보조원이다. 추가 질문 답변은 반드시 아래 구조·형식을 따른다.
+const FONT_STACK_KO = '"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif';
+const FONT_STACK_EN = '"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+const STORAGE_KEY_HISTORY   = 'hci-proto-history';
+const STORAGE_KEY_ACTIVE_ID = 'hci-proto-active-id';
+
+/* ─────────────────── 다국어 번역 ─────────────────── */
+const translations = {
+  ko: {
+    newChat: '새 채팅',
+    newChatTitle: '새로운 채팅',
+    newChatInitMsg: '새 채팅을 시작합니다. 무엇을 도와드릴까요?',
+    deleteConfirm: '이 채팅을 삭제하시겠습니까?',
+    renamePrompt: '새로운 채팅 이름을 입력하세요.',
+    chatFallbackTitle: '채팅',
+    sidebarGuide: '여러 대화를 한눈에 파악하고 대화의 줄기를 계층적으로 관리하세요.',
+    centerSubtitle: 'Smart, clean, paper-like interaction prototype',
+    inputPlaceholder: '메시지 입력…',
+    memoButton: '메모',
+    deepDiveButton: '추가질문',
+    deepDivePanelHeader: '추가 질문',
+    sideChatInputPlaceholder: '추가 질문 입력…',
+    sourceText: '참조 텍스트',
+    sideChatInitMsg: (text) => `"${text}" 부분에 대해 더 궁금한 점이 있으신가요?`,
+    notePlaceholder: '메모를 입력하세요…',
+    renameTitle: '이름 변경',
+    deleteTitle: '삭제',
+    moveToText: '본문으로 이동',
+    generatingAnswer: '답변 생성 중',
+    errorMsg: '죄송합니다. 오류가 발생했습니다.',
+    sideChatErrorMsg: '오류가 발생했습니다.',
+    aiUser: '사용자',
+    aiAI: 'AI',
+    systemInstruction: '반드시 한국어로 답변하세요. 계층적인 대화 구조를 유지하세요.',
+    sideChatAck: '네, 위 지침에 따라 답변하겠습니다.',
+    sideChatSystemBase:
+`너는 학습 보조원이다. 추가 질문 답변은 반드시 아래 구조·형식을 따른다.
 
 [필수 구조 — 메인 창과 같은 계층 가독성]
 1. 인사말·도입 문장 없이 바로 본론으로 시작한다.
@@ -41,11 +74,62 @@ const SIDE_CHAT_SYSTEM_INSTRUCTION_BASE =
 4. 각 번호 항목 아래에는 반드시 하이픈(-) 또는 불릿(•)으로 시작하는 하위 목록을 둔다. 하위 항목은 들여쓰기(줄 시작에 공백 3칸 후 - 또는 * 사용)하여 번호 항목에 종속되게 마크다운 중첩 리스트로 작성한다.
 5. 각 하위 불렛은 1~2문장만 허용한다. 불렛 개수는 번호당 1~3개.
 6. 마크다운 굵게 표기는 한 문장에 핵심 단어 하나 정도만 적용한다. 번호 줄·불렛 줄 전체를 굵게 하지 않는다.
-7. 말투는 사실 중심으로 건조하게 유지한다.`;
-const FONT_STACK =
-  '"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif';
-const STORAGE_KEY_HISTORY   = 'hci-proto-history';
-const STORAGE_KEY_ACTIVE_ID = 'hci-proto-active-id';
+7. 말투는 사실 중심으로 건조하게 유지한다.`,
+    sideChatContextPrefix: (mainCtx) =>
+`메인 대화 맥락을 반드시 참고하여, 이 포스트잇에서 이어지는 추가 질문에만 답하라.
+
+[메인 대화 내용]
+${mainCtx}`,
+    noteSystemInstruction: (mainCtx) =>
+`당신은 사용자의 비선형적 사고를 돕는 연구 보조원입니다. 메인 대화의 흐름을 바탕으로 이 포스트잇의 질문에 구체적으로 답해주세요.\n\n[메인 대화 내용]\n${mainCtx}`,
+  },
+  en: {
+    newChat: 'New Chat',
+    newChatTitle: 'New Chat',
+    newChatInitMsg: 'Starting a new chat. How can I help you?',
+    deleteConfirm: 'Delete this chat?',
+    renamePrompt: 'Enter a new name for this chat.',
+    chatFallbackTitle: 'Chat',
+    sidebarGuide: 'Manage multiple conversations at a glance and organize them hierarchically.',
+    centerSubtitle: 'Smart, clean, paper-like interaction prototype',
+    inputPlaceholder: 'Enter a message…',
+    memoButton: 'Note',
+    deepDiveButton: 'Deep Dive',
+    deepDivePanelHeader: 'Deep Dive',
+    sideChatInputPlaceholder: 'Ask a follow-up…',
+    sourceText: 'Source Text',
+    sideChatInitMsg: (text) => `Do you have more questions about "${text}"?`,
+    notePlaceholder: 'Write a note…',
+    renameTitle: 'Rename',
+    deleteTitle: 'Delete',
+    moveToText: 'Go to source',
+    generatingAnswer: 'Generating response',
+    errorMsg: 'Sorry, an error occurred.',
+    sideChatErrorMsg: 'An error occurred.',
+    aiUser: 'User',
+    aiAI: 'AI',
+    systemInstruction: 'IMPORTANT: You must respond in English ONLY. Maintain the hierarchical thread structure.',
+    sideChatAck: 'Understood. I will follow the instructions above.',
+    sideChatSystemBase:
+`You are a learning assistant. Follow the structure and format below for all responses.
+
+[Required Structure — Same hierarchical readability as the main window]
+1. Begin directly with content — no greeting or introductory sentence.
+2. Do not respond in long prose paragraphs. Key points must be organized in numbered lists (1. 2. 3.). Typically 2–4 numbered items, maximum 5.
+3. The first line of each numbered item should state the core topic in one line after the number (bold key terms only when needed).
+4. Each numbered item must include sub-bullets starting with a hyphen (-) or bullet (•), indented to show subordination using nested markdown lists.
+5. Each sub-bullet is limited to 1–2 sentences. Use 1–3 sub-bullets per numbered item.
+6. Apply bold markdown sparingly — at most one key term per sentence. Do not bold entire lines.
+7. Keep the tone factual and concise.`,
+    sideChatContextPrefix: (mainCtx) =>
+`Refer to the main conversation context and answer only the follow-up question in this thread.
+
+[Main Conversation]
+${mainCtx}`,
+    noteSystemInstruction: (mainCtx) =>
+`You are a research assistant supporting non-linear thinking. Based on the main conversation, answer the question in this note specifically.\n\n[Main Conversation]\n${mainCtx}`,
+  },
+};
 
 const initialData = {
   messages: [
@@ -560,12 +644,26 @@ export default function NonLinearChatInterface() {
     return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
   }, [apiKey]);
 
+  /* ── 언어 감지: URL 파라미터 → 브라우저 설정 순서 ── */
+  const [currentLang] = useState(() => {
+    const urlLang = new URLSearchParams(window.location.search).get('lang');
+    if (urlLang === 'en' || urlLang === 'ko') return urlLang;
+    return navigator.language?.toLowerCase().startsWith('ko') ? 'ko' : 'en';
+  });
+
+  /** 현재 언어의 번역 텍스트를 가져오는 헬퍼 */
+  const t = useCallback(
+    (key) => translations[currentLang]?.[key] ?? translations.ko[key],
+    [currentLang]
+  );
+
   useEffect(() => {
     if (import.meta.env.DEV) {
       console.log('API 키 로드:', apiKey ? '✅' : '❌');
       console.log('사용 모델:', GEMINI_MODEL);
+      console.log('현재 언어:', currentLang);
     }
-  }, [apiKey]);
+  }, [apiKey, currentLang]);
 
   /* ── 채팅 히스토리 ── */
   const [chatHistory, setChatHistory] = useState(() => {
@@ -590,7 +688,7 @@ export default function NonLinearChatInterface() {
 
   const handleDeleteChat = (id, e) => {
     if (e) e.stopPropagation();
-    if (window.confirm('이 채팅을 삭제하시겠습니까?')) {
+    if (window.confirm(t('deleteConfirm'))) {
       setChatHistory((prev) => prev.filter((c) => c.id !== id));
     }
   };
@@ -598,7 +696,7 @@ export default function NonLinearChatInterface() {
   const handleRenameChat = (id, e) => {
     if (e) e.stopPropagation();
     const current = chatHistory.find((c) => c.id === id);
-    const newTitle = window.prompt('새로운 채팅 이름을 입력하세요.', current?.title);
+    const newTitle = window.prompt(t('renamePrompt'), current?.title);
     if (newTitle?.trim()) {
       setChatHistory((prev) =>
         prev.map((c) => (c.id === id ? { ...c, title: newTitle.trim() } : c))
@@ -680,7 +778,7 @@ export default function NonLinearChatInterface() {
 
   /* ── 캔버스 높이 (노트 전용) ── */
   const leftCanvasHeight = useMemo(() => computeCanvasHeight(notes, 44, 64), [notes]);
-  const centerTitle      = activeChat?.title?.trim() ? activeChat.title : '채팅';
+  const centerTitle      = activeChat?.title?.trim() ? activeChat.title : t('chatFallbackTitle');
 
   /* 우측 패널: 활성 스레드 (null이면 첫 번째) */
   const activeThreadId = activeSideChatId ?? sideChats[0]?.id ?? null;
@@ -707,9 +805,9 @@ export default function NonLinearChatInterface() {
     const newId = Date.now();
     const chat = {
       id: newId,
-      title: '새로운 채팅',
+      title: t('newChatTitle'),
       data: {
-        messages: [{ id: 1, sender: 'ai', text: '새 채팅을 시작합니다. 무엇을 도와드릴까요?' }],
+        messages: [{ id: 1, sender: 'ai', text: t('newChatInitMsg') }],
         notes: [], sideChats: [], highlights: [],
       },
     };
@@ -899,7 +997,7 @@ export default function NonLinearChatInterface() {
       id: now,
       sourceText: selectionMenu.text,
       title: truncateTitle(selectionMenu.text),
-      messages: [{ id: 1, sender: 'ai', text: `"${selectionMenu.text}" 부분에 대해 더 궁금한 점이 있으신가요?` }],
+      messages: [{ id: 1, sender: 'ai', text: t('sideChatInitMsg')(selectionMenu.text) }],
       input: '',
     };
     setSideChats((prev) => [...prev, newChat]);
@@ -976,7 +1074,7 @@ export default function NonLinearChatInterface() {
   /* ── 메인 채팅 제출 (스트리밍) ── */
   const ensureSessionTitle = (text) => {
     const cur = chatHistory.find((c) => c.id === activeChatId);
-    if (!cur || cur.title !== '새로운 채팅') return;
+    if (!cur || cur.title !== t('newChatTitle')) return;
     setChatHistory((prev) =>
       prev.map((c) => (c.id === activeChatId ? { ...c, title: truncateTitle(text, 22) } : c))
     );
@@ -1000,9 +1098,15 @@ export default function NonLinearChatInterface() {
 
     try {
       if (!ai) throw new Error('API 키 없음');
+      const sysInstr = translations[currentLang].systemInstruction;
+      const sysAck   = translations[currentLang].sideChatAck;
       const stream = await ai.models.generateContentStream({
         model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: [{ text }] }],
+        contents: [
+          { role: 'user',  parts: [{ text: sysInstr }] },
+          { role: 'model', parts: [{ text: sysAck }] },
+          { role: 'user',  parts: [{ text }] },
+        ],
       });
       let full = '';
       for await (const chunk of stream) {
@@ -1014,7 +1118,7 @@ export default function NonLinearChatInterface() {
     } catch (err) {
       setMainMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId ? { ...m, text: '죄송합니다. 오류가 발생했습니다.' } : m
+          m.id === aiMsgId ? { ...m, text: translations[currentLang].errorMsg } : m
         )
       );
     } finally {
@@ -1048,16 +1152,12 @@ export default function NonLinearChatInterface() {
     );
 
     try {
+      const tr = translations[currentLang];
       const mainCtx = mainMessages
-        .map((m) => `${m.sender === 'user' ? '사용자' : 'AI'}: ${m.text}`)
+        .map((m) => `${m.sender === 'user' ? tr.aiUser : tr.aiAI}: ${m.text}`)
         .join('\n');
       const systemInstruction =
-        `${SIDE_CHAT_SYSTEM_INSTRUCTION_BASE}
-
-메인 대화 맥락을 반드시 참고하여, 이 포스트잇에서 이어지는 추가 질문에만 답하라.
-
-[메인 대화 내용]
-${mainCtx}`;
+        `${tr.sideChatSystemBase}\n\n${tr.sideChatContextPrefix(mainCtx)}`;
 
       // v1 API는 config.systemInstruction 미지원 → history 맨 앞 user/model 쌍으로 삽입
       const allHistory = (chat.messages || [])
@@ -1068,7 +1168,7 @@ ${mainCtx}`;
 
       const fullHistory = [
         { role: 'user',  parts: [{ text: systemInstruction }] },
-        { role: 'model', parts: [{ text: '네, 위 지침에 따라 답변하겠습니다.' }] },
+        { role: 'model', parts: [{ text: tr.sideChatAck }] },
         ...conversationHistory,
       ];
 
@@ -1092,7 +1192,7 @@ ${mainCtx}`;
       setSideChats((prev) =>
         prev.map((c) =>
           c.id === chatId
-            ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: '오류가 발생했습니다.' } : m) }
+            ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: translations[currentLang].sideChatErrorMsg } : m) }
             : c
         )
       );
@@ -1126,19 +1226,26 @@ ${mainCtx}`;
     );
 
     try {
+      const tr = translations[currentLang];
       const mainCtx = mainMessages
-        .map((m) => `${m.sender === 'user' ? '사용자' : 'AI'}: ${m.text}`)
+        .map((m) => `${m.sender === 'user' ? tr.aiUser : tr.aiAI}: ${m.text}`)
         .join('\n');
-      const sysInstr =
-        `당신은 사용자의 비선형적 사고를 돕는 연구 보조원입니다. 메인 대화의 흐름을 바탕으로 이 포스트잇의 질문에 구체적으로 답해주세요.\n\n[메인 대화 내용]\n${mainCtx}`;
+      const sysInstr = tr.noteSystemInstruction(mainCtx);
 
-      const history = (note.messages || [])
+      const rawHistory = (note.messages || [])
         .filter((m) => !(m.sender === 'ai' && m.text === ''))
         .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
-      history.push({ role: 'user', parts: [{ text }] });
+      rawHistory.push({ role: 'user', parts: [{ text }] });
+
+      // v1 API: 시스템 지침을 history 맨 앞 user/model 쌍으로 삽입
+      const contents = [
+        { role: 'user',  parts: [{ text: sysInstr }] },
+        { role: 'model', parts: [{ text: tr.sideChatAck }] },
+        ...rawHistory,
+      ];
 
       const noteStream = await ai.models.generateContentStream({
-        model: GEMINI_MODEL, config: { systemInstruction: sysInstr }, contents: history,
+        model: GEMINI_MODEL, contents,
       });
       let full = '';
       for await (const chunk of noteStream) {
@@ -1155,7 +1262,7 @@ ${mainCtx}`;
       setNotes((prev) =>
         prev.map((n) =>
           n.id === noteId
-            ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: '오류가 발생했습니다.' } : m) }
+            ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: translations[currentLang].sideChatErrorMsg } : m) }
             : n
         )
       );
@@ -1253,7 +1360,11 @@ ${mainCtx}`;
   return (
     <div
       className="flex h-screen w-screen overflow-hidden antialiased text-slate-900 bg-white tracking-tight"
-      style={{ fontFamily: FONT_STACK }}
+      style={{
+        fontFamily: currentLang === 'en' ? FONT_STACK_EN : FONT_STACK_KO,
+        letterSpacing: currentLang === 'en' ? '-0.01em' : undefined,
+        lineHeight:    currentLang === 'en' ? 1.7 : undefined,
+      }}
     >
       <style>{`
         .shadow-postit      { box-shadow: rgba(0,0,0,0.05) 0px 1px 3px 0px; }
@@ -1284,8 +1395,11 @@ ${mainCtx}`;
             className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl px-5 py-3 w-full hover:bg-slate-800 transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            <span className="text-sm font-medium">새 채팅</span>
+            <span className="text-sm font-medium">{t('newChat')}</span>
           </button>
+          <p className="mt-3 text-[11px] text-slate-400 leading-relaxed px-1">
+            {t('sidebarGuide')}
+          </p>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6 space-y-1.5">
           <div className="text-[11px] font-semibold text-slate-400 px-3 py-3 uppercase tracking-wider">
@@ -1309,14 +1423,14 @@ ${mainCtx}`;
                 <div
                   onClick={(e) => handleRenameChat(chat.id, e)}
                   className="p-1.5 hover:bg-white rounded-md text-slate-500 shadow-sm border border-transparent hover:border-slate-200"
-                  title="이름 변경"
+                  title={t('renameTitle')}
                 >
                   <Pencil className="w-4 h-4" />
                 </div>
                 <div
                   onClick={(e) => handleDeleteChat(chat.id, e)}
                   className="p-1.5 hover:bg-red-50 rounded-md text-red-500 shadow-sm border border-transparent hover:border-red-100"
-                  title="삭제"
+                  title={t('deleteTitle')}
                 >
                   <Trash2 className="w-4 h-4" />
                 </div>
@@ -1442,7 +1556,7 @@ ${mainCtx}`;
                         onClick={(e) => { e.stopPropagation(); scrollToHighlight(note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
                         className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
-                        title="본문으로 이동"
+                        title={t('moveToText')}
                       >
                         <MoveUpRight className="w-3.5 h-3.5" />
                       </button>
@@ -1469,7 +1583,7 @@ ${mainCtx}`;
                       value={note.text || ''}
                       onChange={(e) => handleNoteChange(note.id, e.target.value)}
                       className="flex-1 w-full bg-transparent resize-none focus:outline-none p-4 text-[13px] text-slate-800 font-medium leading-relaxed placeholder:text-slate-400/70 text-left"
-                      placeholder="메모를 입력하세요…"
+                      placeholder={t('notePlaceholder')}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
                     />
@@ -1496,7 +1610,7 @@ ${mainCtx}`;
           </div>
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-slate-900 truncate">{centerTitle}</div>
-            <div className="text-[11px] text-slate-500 truncate">Smart, clean, paper-like interaction prototype</div>
+            <div className="text-[11px] text-slate-500 truncate">{t('centerSubtitle')}</div>
           </div>
         </div>
 
@@ -1560,7 +1674,7 @@ ${mainCtx}`;
               type="text"
               value={mainInput}
               onChange={(e) => setMainInput(e.target.value)}
-              placeholder="메시지 입력…"
+              placeholder={t('inputPlaceholder')}
               className="w-full pl-4 pr-12 py-3.5 rounded-2xl focus:outline-none bg-transparent text-[14px] text-slate-900 placeholder:text-slate-400"
             />
             <button
@@ -1594,7 +1708,7 @@ ${mainCtx}`;
               className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
             >
               <StickyNote className="w-4 h-4 text-yellow-300" />
-              <span>메모</span>
+              <span>{t('memoButton')}</span>
             </button>
             <div className="w-px h-5 bg-white/15 mx-1" />
             <button
@@ -1602,7 +1716,7 @@ ${mainCtx}`;
               className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
             >
               <MessageSquarePlus className="w-4 h-4 text-cyan-300" />
-              <span>추가질문</span>
+              <span>{t('deepDiveButton')}</span>
             </button>
           </div>
         )}
@@ -1615,7 +1729,7 @@ ${mainCtx}`;
         {/* ── 패널 헤더 ── */}
         <div className="relative shrink-0 px-4 py-3 border-b border-slate-200/60 bg-white/70 backdrop-blur-sm flex items-center gap-2">
           <MessageSquarePlus className="w-4 h-4 text-cyan-500 shrink-0" />
-          <span className="text-[13px] font-semibold text-slate-700">추가 질문</span>
+          <span className="text-[13px] font-semibold text-slate-700">{t('deepDivePanelHeader')}</span>
           {sideChats.length > 0 && (
             <span className="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 text-[11px] font-bold">
               {sideChats.length}
@@ -1627,10 +1741,19 @@ ${mainCtx}`;
           /* ── 빈 상태 ── */
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 px-6 text-center">
             <MessageSquarePlus className="w-9 h-9 opacity-25" />
-            <p className="text-[13px] leading-relaxed">
-              메인 채팅의 텍스트를 하이라이트한 뒤<br />
-              <span className="font-semibold text-cyan-600">추가질문</span> 버튼을 누르면 여기에 대화가 열립니다.
-            </p>
+            {currentLang === 'en' ? (
+              <p className="text-[13px] leading-relaxed">
+                Highlight what interests you and click{' '}
+                <span className="font-bold text-cyan-600">Deep Dive</span>{' '}
+                to start a deeper conversation.
+              </p>
+            ) : (
+              <p className="text-[13px] leading-relaxed">
+                궁금한 내용을 하이라이트하고{' '}
+                <span className="font-bold text-cyan-600">추가질문</span>{' '}
+                버튼을 눌러 더 깊은 대화를 시작하세요.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0">
@@ -1696,7 +1819,7 @@ ${mainCtx}`;
                     <button
                       className="ml-0.5 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
                       onClick={(e) => { e.stopPropagation(); scrollToHighlight(chat.id); }}
-                      title="본문으로 이동"
+                      title={t('moveToText')}
                     >
                       <MoveUpRight className="w-3 h-3" />
                     </button>
@@ -1717,7 +1840,7 @@ ${mainCtx}`;
                 {/* 출처 텍스트 */}
                 <div className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100">
                   <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-[11px] font-semibold text-cyan-600 uppercase tracking-wide">참조 텍스트</p>
+                    <p className="text-[11px] font-semibold text-cyan-600 uppercase tracking-wide">{t('sourceText')}</p>
                   </div>
                   <p className="text-[13px] text-slate-700 leading-snug line-clamp-2">
                     &ldquo;{activeThread.sourceText}&rdquo;
@@ -1772,7 +1895,7 @@ ${mainCtx}`;
                       type="text"
                       value={activeThread.input || ''}
                       onChange={(e) => updateSideChatInput(activeThread.id, e.target.value)}
-                      placeholder="추가 질문 입력…"
+                      placeholder={t('sideChatInputPlaceholder')}
                       disabled={loadingSideChatIds.has(activeThread.id)}
                       className="flex-1 pl-4 pr-10 py-2.5 bg-transparent text-[14px] text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60 rounded-xl"
                     />
