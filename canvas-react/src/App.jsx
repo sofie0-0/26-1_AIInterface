@@ -22,13 +22,43 @@ import {
   StickyNote,
   X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import { motion } from 'framer-motion';
 
 /* ─────────────────── 상수 ─────────────────── */
 const GEMINI_API_VERSION = 'v1';
 const GEMINI_MODEL = 'gemini-2.5-flash';
+
+/* ─────────────────── 레이아웃 너비 상수 ─────────────────────────────────────
+ * 이 객체가 전체 패널 너비의 단일 진실 공급원(Single Source of Truth)이다.
+ * 패널 너비를 변경할 때는 반드시 이 객체만 수정하고,
+ * JSX 내 인라인 값(%, px)을 직접 바꾸지 않는다.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const LAYOUT = {
+  /** 오버레이 채팅 목록 사이드바 (절대위치, flex flow 외부) */
+  OVERLAY_SIDEBAR_W: 300,
+  /** 좌측 포스트잇 노트 패널 */
+  LEFT_NOTES_W:      250,
+  /** 세로 목차 (Conversation Index) */
+  TOC_W:             150,
+  /** 우측 Deep Dive 패널 */
+  RIGHT_PANEL_W:     400,
+  /** 각 패널의 최소 축소 한계 (리사이즈 핸들 추가 시 사용) */
+  LEFT_NOTES_MIN_W:  180,
+  TOC_MIN_W:         120,
+  RIGHT_PANEL_MIN_W: 280,
+};
+
+/* ── 메모 수납 구역 상수 ── */
+const NOTE_CARD_W         = 225;  // 메모 고정 너비 (floating/stored 공통)
+const NOTE_CARD_H         = 168;  // 메모 고정 높이 (펼친 상태, floating/stored 공통)
+const NOTE_STORED_W       = NOTE_CARD_W;
+const NOTE_STACK_PAD      = 10;   // 수납 구역 상단 여백
+const NOTE_STACK_GAP      = 8;    // 수납된 메모 간 간격
+const NOTE_SNAP_THRESHOLD = 0.6;  // 60% 이상 겹치면 자동 수납
 
 const FONT_STACK_KO = '"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif';
 const FONT_STACK_EN = '"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
@@ -44,7 +74,6 @@ const translations = {
     deleteConfirm: '이 채팅을 삭제하시겠습니까?',
     renamePrompt: '새로운 채팅 이름을 입력하세요.',
     chatFallbackTitle: '채팅',
-    sidebarGuide: '여러 대화를 한눈에 파악하고 대화의 줄기를 계층적으로 관리하세요.',
     centerSubtitle: 'Smart, clean, paper-like interaction prototype',
     inputPlaceholder: '메시지 입력…',
     memoButton: '메모',
@@ -60,6 +89,13 @@ const translations = {
     generatingAnswer: '답변 생성 중',
     errorMsg: '죄송합니다. 오류가 발생했습니다.',
     sideChatErrorMsg: '오류가 발생했습니다.',
+    selectThreadHint: '좌측 목차에서 질문을 선택하세요',
+    sourceRefShort: '참조',
+    tocGuide: '생성된 여러 대화들을\n한눈에 파악하고 계층적으로\n관리하세요.',
+    memoStorageEmptyGuide:
+      '%%MEMO%%를 생성하고 이곳에서 정리하세요.',
+    memoStorageHighlightWord: '메모',
+    ghostTitles: ['질문 1', '질문 2', '질문 3'],
     aiUser: '사용자',
     aiAI: 'AI',
     systemInstruction: '반드시 한국어로 답변하세요. 계층적인 대화 구조를 유지하세요.',
@@ -90,7 +126,6 @@ ${mainCtx}`,
     deleteConfirm: 'Delete this chat?',
     renamePrompt: 'Enter a new name for this chat.',
     chatFallbackTitle: 'Chat',
-    sidebarGuide: 'Manage multiple conversations at a glance and organize them hierarchically.',
     centerSubtitle: 'Smart, clean, paper-like interaction prototype',
     inputPlaceholder: 'Enter a message…',
     memoButton: 'Note',
@@ -106,6 +141,13 @@ ${mainCtx}`,
     generatingAnswer: 'Generating response',
     errorMsg: 'Sorry, an error occurred.',
     sideChatErrorMsg: 'An error occurred.',
+    selectThreadHint: 'Select a conversation from the index',
+    sourceRefShort: 'Ref',
+    tocGuide: 'Track all threads\nat a glance and manage\nthem hierarchically.',
+    memoStorageEmptyGuide:
+      'Create and drag %%MEMO%% here to organize.',
+    memoStorageHighlightWord: 'memos',
+    ghostTitles: ['Thread 1', 'Thread 2', 'Thread 3'],
     aiUser: 'User',
     aiAI: 'AI',
     systemInstruction: 'IMPORTANT: You must respond in English ONLY. Maintain the hierarchical thread structure.',
@@ -154,16 +196,8 @@ function truncateTitle(text, maxLen = 18) {
   return first.length > maxLen ? `${first.slice(0, maxLen)}…` : first;
 }
 
-function computeCanvasHeight(items, collapsedH, paddingBottom = 48) {
-  if (!items?.length) return '100%';
-  const maxBottom = items.reduce((acc, it) => {
-    const h = it.isCollapsed ? collapsedH : (it.height || 0);
-    return Math.max(acc, (it.y || 0) + h);
-  }, 0);
-  return Math.max(maxBottom + paddingBottom, 1);
-}
 
-/* ─── 하이라이트 오프셋 헬퍼 ─── */
+
 
 /** 오버레이(data-highlight-overlay-root) 내부를 제외한 가시 텍스트 노드 목록 */
 function walkTextNodes(root) {
@@ -715,7 +749,11 @@ export default function NonLinearChatInterface() {
 
   /* ── 핵심 상태 ── */
   const [mainMessages, setMainMessages] = useState(() => activeChat?.data?.messages ?? initialData.messages);
-  const [notes,        setNotes]        = useState(() => activeChat?.data?.notes ?? []);
+  const [notes,        setNotes]        = useState(() =>
+    (activeChat?.data?.notes ?? []).map((n) => ({
+      stored: true, snapping: false, floatX: 0, floatY: 0, ...n,
+    }))
+  );
   const [sideChats,    setSideChats]    = useState(() => activeChat?.data?.sideChats ?? []);
   const [highlights,   setHighlights]   = useState(() =>
     migrateHighlights(activeChat?.data?.highlights ?? [])
@@ -742,11 +780,13 @@ export default function NonLinearChatInterface() {
   const [selectionMenu, setSelectionMenu] = useState({
     visible: false, text: '', x: 0, y: 0, originY: 0,
     messageId: null, startOffset: 0, endOffset: 0,
+    parentChatId: null,
   });
 
-  /* 드래그/리사이즈 */
+  /* 드래그 (메모는 고정 크기 유지로 리사이즈 없음) */
   const [dragInfo,   setDragInfo]   = useState(null);
-  const [resizeInfo, setResizeInfo] = useState(null);
+  /* 수납 구역 자석 Highlight */
+  const [isSnapZoneHighlighted, setIsSnapZoneHighlighted] = useState(false);
 
   /* 우측 패널: 활성 스레드 ID (null = 첫 번째 자동 선택) */
   const [activeSideChatId, setActiveSideChatId] = useState(null);
@@ -754,15 +794,54 @@ export default function NonLinearChatInterface() {
   /* ── Refs ── */
   const postItRefs      = useRef({});
   const dragMoved       = useRef(false);
+  const leftPanelRef    = useRef(null); // 수납 구역(좌측 패널) 외곽 래퍼
   const leftRef         = useRef(null);
   const centerRef       = useRef(null);
   const centerScrollRef = useRef(null);
   const sideChatBottomRef = useRef(null);
   const mainBottomRef   = useRef(null);
+  const sidebarRef      = useRef(null);
+
+  /* 세로 목차 활성 탭 돌출 바 위치 */
+  const [protrBarInfo, setProtrBarInfo] = useState(null);
 
   /* ── Markdown 플러그인 (메모화) ── */
   const markdownRehypePlugins = useMemo(() => [rehypeRaw], []);
   const markdownComponents    = useMemo(() => ({}), []);
+
+  /* ── 계층 트리: sideChats → depth 부여 DFS 정렬 ── */
+  const orderedTree = useMemo(() => {
+    const childrenMap = {};
+    sideChats.forEach((c) => { childrenMap[c.id] = []; });
+    const roots = [];
+    sideChats.forEach((c) => {
+      if (c.parentId && childrenMap[c.parentId]) {
+        childrenMap[c.parentId].push(c);
+      } else {
+        roots.push(c);
+      }
+    });
+    const result = [];
+    const visit = (chat, depth) => {
+      result.push({ ...chat, depth });
+      (childrenMap[chat.id] || []).forEach((child) => visit(child, depth + 1));
+    };
+    roots.forEach((c) => visit(c, 0));
+    return result;
+  }, [sideChats]);
+
+  /* ── 트리 레이블: chat.id → "1" | "1-1" | "1-1-2" … ── */
+  const treeLabelMap = useMemo(() => {
+    const map = {};
+    const counters = {};
+    orderedTree.forEach((node) => {
+      const key = node.parentId ?? '__root__';
+      counters[key] = (counters[key] ?? 0) + 1;
+      const parentLabel = node.parentId ? (map[node.parentId] ?? '') : '';
+      map[node.id] = parentLabel ? `${parentLabel}-${counters[key]}` : String(counters[key]);
+    });
+    return map;
+  }, [orderedTree]);
 
   /* ── highlightIndexMap: link.id → 전역 배지 번호 ── */
   const highlightIndexMap = useMemo(() => {
@@ -776,13 +855,21 @@ export default function NonLinearChatInterface() {
     return map;
   }, [highlights]);
 
-  /* ── 캔버스 높이 (노트 전용) ── */
-  const leftCanvasHeight = useMemo(() => computeCanvasHeight(notes, 44, 64), [notes]);
   const centerTitle      = activeChat?.title?.trim() ? activeChat.title : t('chatFallbackTitle');
 
   /* 우측 패널: 활성 스레드 (null이면 첫 번째) */
   const activeThreadId = activeSideChatId ?? sideChats[0]?.id ?? null;
   const activeThread   = sideChats.find((c) => c.id === activeThreadId) ?? null;
+
+  /* ── 세로 목차 돌출 바 위치 동기화 ── */
+  useEffect(() => {
+    if (!activeThreadId || !sidebarRef.current) { setProtrBarInfo(null); return; }
+    const tabEl = sidebarRef.current.querySelector(`[data-tab-id="${activeThreadId}"]`);
+    if (!tabEl) { setProtrBarInfo(null); return; }
+    const tr = tabEl.getBoundingClientRect();
+    const sr = sidebarRef.current.getBoundingClientRect();
+    setProtrBarInfo({ sidebarLeft: sr.left, top: tr.top, height: tr.height });
+  }, [activeThreadId, orderedTree]);
 
   /* ── 채팅 히스토리 동기화 ── */
   useEffect(() => {
@@ -884,6 +971,36 @@ export default function NonLinearChatInterface() {
     if (!isInput) scrollToHighlight(id);
   };
 
+  /* ── 사이드챗 텍스트 선택 메뉴 (data-side-message-text-root 기준) ── */
+  const handleMouseUpSide = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      return;
+    }
+    const range       = selection.getRangeAt(0);
+    const exactText   = range.toString();
+    const trimmedText = exactText.trim();
+    if (!trimmedText) {
+      setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      return;
+    }
+    const ancestor = range.commonAncestorContainer;
+    const node     = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement : ancestor;
+    const textRoot = node?.closest('[data-side-message-text-root]');
+    if (!textRoot) {
+      setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    setSelectionMenu({
+      visible: true, text: trimmedText,
+      x: rect.left + rect.width / 2, y: rect.top - 10, originY: rect.top,
+      messageId: null, startOffset: 0, endOffset: 0,
+      parentChatId: activeThreadId,
+    });
+  };
+
   /* ── 텍스트 선택 메뉴 (오프셋: data-message-text-root 기준) ── */
   const handleMouseUpCenter = () => {
     const selection = window.getSelection();
@@ -928,6 +1045,7 @@ export default function NonLinearChatInterface() {
       visible: true, text: trimmedText,
       x: rect.left + rect.width / 2, y: rect.top - 10, originY: rect.top,
       messageId, startOffset, endOffset,
+      parentChatId: null,
     });
   };
 
@@ -935,18 +1053,22 @@ export default function NonLinearChatInterface() {
   const handleCreateNote = () => {
     const yPos     = Math.max(24, selectionMenu.originY - 24);
     const now      = Date.now();
-    const noteWidth = 250;
-    const xPos     = leftRef.current
-      ? leftRef.current.clientWidth - noteWidth - 24
+    const xPos = leftRef.current
+      ? leftRef.current.clientWidth - NOTE_CARD_W - 24
       : 24;
 
     const newNote = {
       id: now,
-      text: selectionMenu.text,   // 하이라이트된 텍스트가 초기 메모 내용
+      text: selectionMenu.text,
       title: truncateTitle(selectionMenu.text),
       isCollapsed: false,
+      stored: true,
+      snapping: false,
+      floatX: 0,
+      floatY: 0,
       x: xPos, y: yPos,
-      width: noteWidth, height: 280,
+      width: NOTE_CARD_W,
+      height: NOTE_CARD_H,
     };
     setNotes((prev) => [...prev, newNote]);
 
@@ -986,15 +1108,21 @@ export default function NonLinearChatInterface() {
       ]);
     }
 
-    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0 });
+    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null });
     window.getSelection()?.removeAllRanges();
   };
 
   const handleCreateSideChat = () => {
     const now = Date.now();
+    const parentChatId = selectionMenu.parentChatId ?? null;
+    const parentDepth  = parentChatId
+      ? (orderedTree.find((c) => c.id === parentChatId)?.depth ?? 0)
+      : -1;
 
     const newChat = {
       id: now,
+      parentId: parentChatId,
+      depth: parentDepth + 1,
       sourceText: selectionMenu.text,
       title: truncateTitle(selectionMenu.text),
       messages: [{ id: 1, sender: 'ai', text: t('sideChatInitMsg')(selectionMenu.text) }],
@@ -1038,7 +1166,7 @@ export default function NonLinearChatInterface() {
       ]);
     }
 
-    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0 });
+    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null });
     window.getSelection()?.removeAllRanges();
   };
 
@@ -1275,61 +1403,118 @@ export default function NonLinearChatInterface() {
   const startDrag = (e, id, type, itemX, itemY) => {
     e.preventDefault();
     dragMoved.current = false;
+
+    if (type === 'note') {
+      const note = notes.find((n) => n.id === id);
+      if (note?.stored && !note?.snapping) {
+        // 수납된 메모 → 뷰포트 좌표를 DOM에서 직접 읽어 floating 전환
+        const el = postItRefs.current[id];
+        const rect = el?.getBoundingClientRect();
+        if (rect) {
+          const startX = rect.left;
+          const startY = rect.top;
+          setNotes((prev) =>
+            prev.map((n) =>
+              n.id === id ? { ...n, stored: false, snapping: false, floatX: startX, floatY: startY } : n
+            )
+          );
+          setDragInfo({ type, id, startX, startY, mouseX: e.clientX, mouseY: e.clientY });
+          return;
+        }
+      }
+      // 이미 floating 상태
+      const fx = note?.floatX ?? itemX ?? 0;
+      const fy = note?.floatY ?? itemY ?? 0;
+      setDragInfo({ type, id, startX: fx, startY: fy, mouseX: e.clientX, mouseY: e.clientY });
+      return;
+    }
+
     setDragInfo({ type, id, startX: itemX, startY: itemY, mouseX: e.clientX, mouseY: e.clientY });
   };
 
-  const startResize = (e, id, type, dir, width, height) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setResizeInfo({ type, id, dir, startWidth: width, startHeight: height, mouseX: e.clientX, mouseY: e.clientY });
-  };
-
   useEffect(() => {
+    /* ── 수납 슬롯 viewport 좌표 계산 헬퍼 ── */
+    const computeSnapSlot = (excludeId) => {
+      const panelRect = leftPanelRef.current?.getBoundingClientRect();
+      if (!panelRect) return null;
+      const storedOthers = notes.filter((n) => n.stored && n.id !== excludeId);
+      let slotY = panelRect.top + NOTE_STACK_PAD;
+      storedOthers.forEach((n) => {
+        slotY += (n.isCollapsed ? 44 : NOTE_CARD_H) + NOTE_STACK_GAP;
+      });
+      return {
+        x: panelRect.left + (panelRect.width - NOTE_CARD_W) / 2,
+        y: slotY,
+        panelRect,
+      };
+    };
+
     const onMove = (e) => {
       if (dragInfo) {
         dragMoved.current = true;
-        const dx  = e.clientX - dragInfo.mouseX;
-        const dy  = e.clientY - dragInfo.mouseY;
-        let newX  = dragInfo.startX + dx;
-        let newY  = dragInfo.startY + dy;
-        const sc  = leftRef.current;
-        const it  = notes.find((n) => n.id === dragInfo.id);
+        const dx   = e.clientX - dragInfo.mouseX;
+        const dy   = e.clientY - dragInfo.mouseY;
+        const newX = dragInfo.startX + dx;
+        const newY = dragInfo.startY + dy;
 
-        if (sc && it) {
-          const iW = it.width || 250;
-          const iH = it.isCollapsed ? 44 : (it.height || 280);
-          newX = clamp(newX, 0, Math.max(0, sc.clientWidth  - iW));
-          newY = clamp(newY, 0, Math.max(0, sc.scrollHeight - iH));
-        }
-        setNotes((prev) => prev.map((n) => n.id === dragInfo.id ? { ...n, x: newX, y: newY } : n));
-      }
+        if (dragInfo.type === 'note') {
+          const panelEl = leftPanelRef.current;
+          if (panelEl) {
+            const panelRect = panelEl.getBoundingClientRect();
+            const note      = notes.find((n) => n.id === dragInfo.id);
+            const noteH     = note?.isCollapsed ? 44 : NOTE_CARD_H;
+            const overlapW  = Math.max(0, Math.min(panelRect.right,  newX + NOTE_CARD_W) - Math.max(panelRect.left, newX));
+            const overlapH  = Math.max(0, Math.min(panelRect.bottom, newY + noteH)        - Math.max(panelRect.top,  newY));
+            const overlapRatio = (NOTE_CARD_W * noteH) > 0 ? (overlapW * overlapH) / (NOTE_CARD_W * noteH) : 0;
 
-      if (resizeInfo) {
-        const dx = e.clientX - resizeInfo.mouseX;
-        const dy = e.clientY - resizeInfo.mouseY;
-        const sc = leftRef.current;
-        if (!sc) return;
-        const it = notes.find((n) => n.id === resizeInfo.id);
-        if (!it) return;
+            // 60% 이상일 때만 수납 "예고" (실제 스냅은 mouseup 시)
+            setIsSnapZoneHighlighted(overlapRatio >= NOTE_SNAP_THRESHOLD);
+          }
 
-        let nW = it.width, nH = it.height;
-        if (resizeInfo.dir === 'right' || resizeInfo.dir === 'both') {
-          nW = Math.max(240, Math.min(resizeInfo.startWidth  + dx, sc.clientWidth  - (it.x || 0)));
+          /* 드래그 중에는 항상 플로팅(포털) 상태로 따라다니게 위치만 갱신 */
+          setNotes((prev) =>
+            prev.map((n) => n.id === dragInfo.id ? { ...n, floatX: newX, floatY: newY } : n)
+          );
         }
-        if (resizeInfo.dir === 'bottom' || resizeInfo.dir === 'both') {
-          nH = Math.max(140, Math.min(resizeInfo.startHeight + dy, sc.scrollHeight - (it.y || 0)));
-        }
-        setNotes((prev) => prev.map((n) => n.id === resizeInfo.id ? { ...n, width: nW, height: nH } : n));
       }
     };
 
     const onUp = () => {
+      if (dragInfo?.type === 'note') {
+        const nid       = dragInfo.id;
+        const noteState = notes.find((n) => n.id === nid);
+        const panelEl   = leftPanelRef.current;
+
+        if (noteState && !noteState.stored && panelEl && !noteState.snapping) {
+          const panelRect = panelEl.getBoundingClientRect();
+          const noteH     = noteState.isCollapsed ? 44 : NOTE_CARD_H;
+          const nL        = noteState.floatX ?? 0;
+          const nT        = noteState.floatY ?? 0;
+          const overlapW = Math.max(0, Math.min(panelRect.right,  nL + NOTE_CARD_W) - Math.max(panelRect.left, nL));
+          const overlapH = Math.max(0, Math.min(panelRect.bottom, nT + noteH)        - Math.max(panelRect.top,  nT));
+          const overlapRatio = (NOTE_CARD_W * noteH) > 0 ? (overlapW * overlapH) / (NOTE_CARD_W * noteH) : 0;
+
+          if (overlapRatio >= NOTE_SNAP_THRESHOLD) {
+            const slot = computeSnapSlot(nid);
+            if (slot) {
+              setIsSnapZoneHighlighted(false);
+              setNotes((prev) =>
+                prev.map((n) => n.id === nid ? { ...n, snapping: true, floatX: slot.x, floatY: slot.y } : n)
+              );
+              setDragInfo(null);
+              setTimeout(() => { dragMoved.current = false; }, 50);
+              return;
+            }
+          }
+        }
+      }
+
+      setIsSnapZoneHighlighted(false);
       setDragInfo(null);
-      setResizeInfo(null);
       setTimeout(() => { dragMoved.current = false; }, 50);
     };
 
-    if (dragInfo || resizeInfo) {
+    if (dragInfo) {
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     }
@@ -1337,7 +1522,7 @@ export default function NonLinearChatInterface() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dragInfo, notes, resizeInfo]);
+  }, [dragInfo, notes]);
 
   /* ── 페이퍼 오버레이 ── */
   const PaperOverlay = () => (
@@ -1365,6 +1550,12 @@ export default function NonLinearChatInterface() {
         letterSpacing: currentLang === 'en' ? '-0.01em' : undefined,
         lineHeight:    currentLang === 'en' ? 1.7 : undefined,
       }}
+      onMouseUp={(e) => {
+        if (e.target.closest('[data-selection-menu]')) return;
+        if (!e.target.closest('[data-message-text-root]') && !e.target.closest('[data-side-message-text-root]')) {
+          setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        }
+      }}
     >
       <style>{`
         .shadow-postit      { box-shadow: rgba(0,0,0,0.05) 0px 1px 3px 0px; }
@@ -1383,11 +1574,14 @@ export default function NonLinearChatInterface() {
         .typing-dot:nth-child(3) { animation-delay: 0.24s; }
       `}</style>
 
-      {/* ── 사이드바 ── */}
+      {/* ── 오버레이 사이드바 ── */}
       <div
-        className={`absolute top-0 left-0 h-full bg-white/92 backdrop-blur-md border-r border-slate-200 transition-[width] duration-300 z-50 flex flex-col overflow-hidden ${
-          isSidebarOpen ? 'w-72 shadow-xl' : 'w-0 border-transparent shadow-none'
-        }`}
+        className="absolute top-0 left-0 h-full bg-white/92 backdrop-blur-md border-r border-slate-200 transition-[width] duration-300 z-50 flex flex-col overflow-hidden"
+        style={{
+          width:     isSidebarOpen ? LAYOUT.OVERLAY_SIDEBAR_W : 0,
+          boxShadow: isSidebarOpen ? '0 25px 50px -12px rgba(0,0,0,0.25)' : 'none',
+          borderColor: isSidebarOpen ? undefined : 'transparent',
+        }}
       >
         <div className="p-6 whitespace-nowrap overflow-hidden shrink-0">
           <button
@@ -1397,9 +1591,6 @@ export default function NonLinearChatInterface() {
             <Plus className="w-4 h-4" />
             <span className="text-sm font-medium">{t('newChat')}</span>
           </button>
-          <p className="mt-3 text-[11px] text-slate-400 leading-relaxed px-1">
-            {t('sidebarGuide')}
-          </p>
         </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6 space-y-1.5">
           <div className="text-[11px] font-semibold text-slate-400 px-3 py-3 uppercase tracking-wider">
@@ -1442,59 +1633,93 @@ export default function NonLinearChatInterface() {
 
       <button
         onClick={() => setIsSidebarOpen((v) => !v)}
-        className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-16 bg-white border border-slate-200 rounded-r-xl shadow-sm hover:bg-slate-50 text-slate-500 z-50 cursor-pointer transition-[left] duration-300 ${
-          isSidebarOpen ? 'left-72 border-l-0' : 'left-0 border-l-0'
-        }`}
+        className="absolute top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-16 bg-white border border-l-0 border-slate-200 rounded-r-xl shadow-sm hover:bg-slate-50 text-slate-500 z-50 cursor-pointer"
+        style={{
+          left:       isSidebarOpen ? LAYOUT.OVERLAY_SIDEBAR_W : 0,
+          transition: 'left 300ms cubic-bezier(0.4,0,0.2,1)',
+        }}
       >
         <Menu className="w-4 h-4" />
       </button>
 
-      {/* ══════════════ 좌측 패널: 노트 ══════════════ */}
-      <div className="relative flex-[0_0_30%] min-w-0 h-full border-r border-slate-200 bg-white">
-        <PaperOverlay />
-        <div ref={leftRef} className="absolute inset-0 overflow-y-auto overflow-x-hidden scroll-smooth">
-          <div className="relative w-full" style={{ height: leftCanvasHeight }}>
-            {notes.map((note) => {
-              const isActiveDrag = dragInfo?.type === 'note' && dragInfo?.id === note.id;
+      {/* ══════════════ 좌측 패널: 수납 구역 ══════════════ */}
+      <div
+        ref={leftPanelRef}
+        className="relative h-full overflow-hidden border-r border-slate-200 bg-white"
+        style={{
+          width:     LAYOUT.LEFT_NOTES_W,
+          minWidth:  LAYOUT.LEFT_NOTES_MIN_W,
+          flexShrink: 0,
+          flexGrow:   0,
+        }}
+      >
+        <div
+          className={`absolute inset-0 flex flex-col overflow-hidden transition-transform duration-200 ease-out origin-center ${
+            isSnapZoneHighlighted ? 'scale-[0.982]' : 'scale-100'
+          }`}
+        >
+          <PaperOverlay />
+          {/* 자석 수납 Highlight 오버레이 */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'rgba(253, 224, 71, 0.28)',
+              opacity:      isSnapZoneHighlighted ? 1 : 0,
+              transition:   'opacity 0.12s ease, box-shadow 0.2s ease',
+              zIndex:       2,
+              boxShadow:    isSnapZoneHighlighted ? 'inset 0 4px 14px rgba(15, 23, 42, 0.09)' : 'none',
+            }}
+          />
+          <div
+            ref={leftRef}
+            className="absolute inset-0 z-[10] overflow-y-auto overflow-x-hidden scroll-smooth"
+          >
+            {notes.length === 0 ? (
+              <div className="relative flex min-h-full flex-col items-center justify-center gap-3 px-6 pb-6 pt-10 text-center opacity-95">
+                <StickyNote className="w-9 h-9 shrink-0 text-yellow-300 opacity-35" />
+                <p className="max-w-[220px] text-center text-[13px] leading-relaxed text-slate-400">
+                  {t('memoStorageEmptyGuide')
+                    .split('%%MEMO%%')
+                    .map((segment, i, arr) => (
+                      <React.Fragment key={`memo-empty-${currentLang}-${i}`}>
+                        {segment}
+                        {i < arr.length - 1 && (
+                          <span className="font-bold text-yellow-600">{t('memoStorageHighlightWord')}</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-[8px] py-[10px]">
+                {notes.filter((n) => n.stored && !n.snapping).map((note) => {
               const isCollapsed  = !!note.isCollapsed;
-              const height       = isCollapsed ? 44 : (note.height || 280);
-
-              // 텍스트 hover → 이 포스트잇 강조 / 포스트잇 click → 하이라이트로
-              const isFlashing =
+              const storedH      = isCollapsed ? 44 : NOTE_CARD_H;
+              const isFlashing   =
                 flashingId === note.id ||
                 (hoveredHighlightId &&
                   highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === note.id));
-
               const isLocalHovered = hoveredNoteId === note.id;
-              const badgeNum = highlightIndexMap[note.id];
+              const badgeNum       = highlightIndexMap[note.id];
 
-              // 팝업 효과: drag > flash > localHover 순서로 우선순위
-              const noteTransform = isActiveDrag
-                ? 'scale(1.01)'
-                : isFlashing
-                  ? 'translateY(-3px) scale(1.03)'
-                  : isLocalHovered
-                    ? 'translateY(-2px) scale(1.01)'
-                    : 'none';
-              const noteShadow = isActiveDrag
-                ? 'rgba(0,0,0,0.10) 0px 8px 22px -10px, rgba(0,0,0,0.06) 0px 2px 6px 0px'
-                : isFlashing
-                  ? '0 12px 32px rgba(0,0,0,0.14), 0 4px 10px rgba(0,0,0,0.08)'
-                  : isLocalHovered
-                    ? '0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)'
-                    : 'rgba(0,0,0,0.05) 0px 1px 3px 0px';
-              const noteZ = isActiveDrag ? 40 : isFlashing ? 50 : isLocalHovered ? 35 : 30;
+              const noteShadow = isFlashing
+                ? '0 8px 20px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)'
+                : isLocalHovered
+                  ? '0 4px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)'
+                  : 'rgba(0,0,0,0.04) 0px 1px 2px 0px';
 
               return (
                 <div
                   key={note.id}
                   ref={(el) => (postItRefs.current[note.id] = el)}
                   style={{
-                    left: note.x, top: note.y, width: note.width || 250, height,
-                    transform: noteTransform,
-                    boxShadow: noteShadow,
-                    zIndex: noteZ,
-                    transition: isActiveDrag ? 'none' : 'transform 0.2s ease, box-shadow 0.2s ease',
+                    width:      NOTE_STORED_W,
+                    height:     storedH,
+                    boxShadow:  noteShadow,
+                    flexShrink: 0,
+                    transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                    transform:  isFlashing ? 'translateX(2px)' : isLocalHovered ? 'translateX(1px)' : 'none',
                   }}
                   onClick={(e) => handlePostItClick(e, note.id)}
                   onMouseEnter={() => {
@@ -1506,56 +1731,39 @@ export default function NonLinearChatInterface() {
                     setHoveredNoteId(null);
                     setHoveredPostItId(null);
                   }}
-                  className={`absolute rounded-xl flex flex-col pointer-events-auto bg-yellow-100 ${
+                  className={`rounded-xl flex flex-col pointer-events-auto bg-yellow-50 ${
                     isCollapsed ? 'overflow-hidden' : ''
-                  } ${isFlashing ? 'border border-slate-300' : 'border border-slate-200/80'}`}
+                  } ${isFlashing ? 'border border-yellow-300/70' : 'border border-slate-200/50'}`}
                 >
-                  {!isCollapsed && (
-                    <>
-                      <div className="absolute top-0 right-0 w-2 h-full cursor-e-resize z-10"
-                        onMouseDown={(e) => startResize(e, note.id, 'note', 'right', note.width || 250, note.height || 280)} />
-                      <div className="absolute bottom-0 left-0 w-full h-2 cursor-s-resize z-10"
-                        onMouseDown={(e) => startResize(e, note.id, 'note', 'bottom', note.width || 250, note.height || 280)} />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-20"
-                        onMouseDown={(e) => startResize(e, note.id, 'note', 'both', note.width || 250, note.height || 280)} />
-                    </>
-                  )}
-
                   {/* 헤더 */}
                   <div
                     className={`relative flex items-center justify-between px-4 select-none ${
                       isCollapsed ? 'h-11' : 'h-11 border-b border-black/5'
                     } cursor-grab active:cursor-grabbing`}
-                    onMouseDown={(e) => startDrag(e, note.id, 'note', note.x, note.y)}
+                    onMouseDown={(e) => startDrag(e, note.id, 'note', note.floatX, note.floatY)}
                   >
-                    {isCollapsed && (
-                      <>
-                        <div className="absolute inset-x-0 top-0 h-[18px]" style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0))' }} />
-                        <div className="absolute inset-x-0 top-[18px] h-[10px]" style={{ boxShadow: 'rgba(0,0,0,0.06) 0px 3px 10px -8px inset' }} />
-                      </>
-                    )}
                     <div className="flex items-center gap-2 overflow-hidden w-full mr-3">
-                      <GripHorizontal className="w-4 h-4 text-slate-700/40 shrink-0" />
-                      <span className="flex items-center justify-center w-5 h-5 bg-yellow-400 text-yellow-900 text-[11px] font-bold rounded-full shrink-0">
+                      <GripHorizontal className="w-4 h-4 text-slate-500/40 shrink-0" />
+                      <span className="flex items-center justify-center w-5 h-5 bg-yellow-300 text-yellow-900 text-[11px] font-bold rounded-full shrink-0">
                         {badgeNum}
                       </span>
                       {isCollapsed ? (
                         <input
                           value={note.title}
                           onChange={(e) => handleNoteTitleChange(note.id, e.target.value)}
-                          className="bg-transparent border-none outline-none text-[13px] font-semibold text-slate-900 w-full truncate"
+                          className="bg-transparent border-none outline-none text-[13px] font-semibold text-slate-700 w-full truncate"
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <span className="text-[13px] font-semibold text-slate-900 truncate">{note.title}</span>
+                        <span className="text-[13px] font-semibold text-slate-700 truncate">{note.title}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0 relative z-10">
                       <button
                         onClick={(e) => { e.stopPropagation(); scrollToHighlight(note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-500/70 transition-colors"
                         title={t('moveToText')}
                       >
                         <MoveUpRight className="w-3.5 h-3.5" />
@@ -1563,26 +1771,24 @@ export default function NonLinearChatInterface() {
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleNoteCollapse(note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-500/70 transition-colors"
                       >
                         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeNote(note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                        className="p-1.5 hover:bg-black/5 rounded-lg text-slate-500/70 transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-
                   {!isCollapsed && (
-                    /* ── 메모장 body: 자유롭게 편집 가능한 textarea ── */
                     <textarea
                       value={note.text || ''}
                       onChange={(e) => handleNoteChange(note.id, e.target.value)}
-                      className="flex-1 w-full bg-transparent resize-none focus:outline-none p-4 text-[13px] text-slate-800 font-medium leading-relaxed placeholder:text-slate-400/70 text-left"
+                      className="flex-1 w-full bg-transparent resize-none focus:outline-none p-4 text-[13px] text-slate-700 font-medium leading-relaxed placeholder:text-slate-400/60 text-left"
                       placeholder={t('notePlaceholder')}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
@@ -1590,16 +1796,161 @@ export default function NonLinearChatInterface() {
                   )}
                 </div>
               );
-            })}
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* ══════════════ 플로팅 메모 포털 (floating + snapping) ══════════════ */}
+      {createPortal(
+        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9000 }}>
+          {notes.filter((n) => !n.stored || n.snapping).map((note) => {
+            const isActiveDrag   = dragInfo?.type === 'note' && dragInfo?.id === note.id;
+            const isCollapsed    = !!note.isCollapsed;
+            const floatW         = NOTE_CARD_W;
+            const floatH         = isCollapsed ? 44 : NOTE_CARD_H;
+            const isFlashing     =
+              flashingId === note.id ||
+              (hoveredHighlightId &&
+                highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === note.id));
+            const isLocalHovered = hoveredNoteId === note.id;
+            const badgeNum       = highlightIndexMap[note.id];
+
+            const noteShadow = isActiveDrag
+              ? '0 20px 50px rgba(0,0,0,0.22), 0 8px 20px rgba(0,0,0,0.14)'
+              : isFlashing
+                ? '0 12px 32px rgba(0,0,0,0.14), 0 4px 10px rgba(0,0,0,0.08)'
+                : isLocalHovered
+                  ? '0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)'
+                  : '0 4px 14px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05)';
+
+            return (
+              <motion.div
+                key={note.id}
+                ref={(el) => (postItRefs.current[note.id] = el)}
+                style={{
+                  position:       'fixed',
+                  left:           0,
+                  top:            0,
+                  width:          floatW,
+                  height:         floatH,
+                  pointerEvents:  'auto',
+                  zIndex:         isActiveDrag ? 9999 : isFlashing ? 9500 : 9100,
+                  boxShadow:      noteShadow,
+                }}
+                animate={{ x: note.floatX ?? 0, y: note.floatY ?? 0 }}
+                transition={
+                  note.snapping
+                    ? { type: 'spring', stiffness: 300, damping: 28 }
+                    : { duration: 0 }
+                }
+                onAnimationComplete={() => {
+                  if (note.snapping) {
+                    setNotes((prev) =>
+                      prev.map((n) =>
+                        n.id === note.id ? { ...n, stored: true, snapping: false } : n
+                      )
+                    );
+                  }
+                }}
+                onClick={(e) => handlePostItClick(e, note.id)}
+                onMouseEnter={() => {
+                  setHoveredNoteId(note.id);
+                  const hl = highlights.find((h) => h.links?.some((l) => l.id === note.id));
+                  setHoveredPostItId(hl?.id ?? null);
+                }}
+                onMouseLeave={() => {
+                  setHoveredNoteId(null);
+                  setHoveredPostItId(null);
+                }}
+                className={`rounded-xl flex flex-col bg-yellow-100 ${
+                  isCollapsed ? 'overflow-hidden' : ''
+                } ${isFlashing ? 'border border-slate-300' : 'border border-slate-200/80'}`}
+              >
+                <div
+                  className={`relative flex items-center justify-between px-4 select-none ${
+                    isCollapsed ? 'h-11' : 'h-11 border-b border-black/5'
+                  } cursor-grab active:cursor-grabbing`}
+                  onMouseDown={(e) => startDrag(e, note.id, 'note', note.floatX, note.floatY)}
+                >
+                  {isCollapsed && (
+                    <>
+                      <div className="absolute inset-x-0 top-0 h-[18px]" style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0))' }} />
+                      <div className="absolute inset-x-0 top-[18px] h-[10px]" style={{ boxShadow: 'rgba(0,0,0,0.06) 0px 3px 10px -8px inset' }} />
+                    </>
+                  )}
+                  <div className="flex items-center gap-2 overflow-hidden w-full mr-3">
+                    <GripHorizontal className="w-4 h-4 text-slate-700/40 shrink-0" />
+                    <span className="flex items-center justify-center w-5 h-5 bg-yellow-400 text-yellow-900 text-[11px] font-bold rounded-full shrink-0">
+                      {badgeNum}
+                    </span>
+                    {isCollapsed ? (
+                      <input
+                        value={note.title}
+                        onChange={(e) => handleNoteTitleChange(note.id, e.target.value)}
+                        className="bg-transparent border-none outline-none text-[13px] font-semibold text-slate-900 w-full truncate"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="text-[13px] font-semibold text-slate-900 truncate">{note.title}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 relative z-10">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); scrollToHighlight(note.id); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                      title={t('moveToText')}
+                    >
+                      <MoveUpRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleNoteCollapse(note.id); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                    >
+                      {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeNote(note.id); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {!isCollapsed && (
+                  <textarea
+                    value={note.text || ''}
+                    onChange={(e) => handleNoteChange(note.id, e.target.value)}
+                    className="flex-1 w-full bg-transparent resize-none focus:outline-none p-4 text-[13px] text-slate-800 font-medium leading-relaxed placeholder:text-slate-400/70 text-left"
+                    placeholder={t('notePlaceholder')}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+              </motion.div>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+
       {/* ══════════════ 중앙 패널 ══════════════ */}
       <div
         ref={centerRef}
-        className="relative flex-[0_0_40%] min-w-0 h-full bg-white flex flex-col"
+        className="relative h-full bg-white flex flex-col"
         onMouseUp={handleMouseUpCenter}
+        style={{
+          flex:    '1 1 0',
+          minWidth: 320,
+          zIndex:   1,
+        }}
       >
         <PaperOverlay />
 
@@ -1609,8 +1960,8 @@ export default function NonLinearChatInterface() {
             <Bot className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold text-slate-900 truncate">{centerTitle}</div>
-            <div className="text-[11px] text-slate-500 truncate">{t('centerSubtitle')}</div>
+            <div className="text-[12.5px] font-semibold text-slate-800 truncate">{centerTitle}</div>
+            <div className="text-[10.5px] text-slate-400 truncate">{t('centerSubtitle')}</div>
           </div>
         </div>
 
@@ -1675,7 +2026,7 @@ export default function NonLinearChatInterface() {
               value={mainInput}
               onChange={(e) => setMainInput(e.target.value)}
               placeholder={t('inputPlaceholder')}
-              className="w-full pl-4 pr-12 py-3.5 rounded-2xl focus:outline-none bg-transparent text-[14px] text-slate-900 placeholder:text-slate-400"
+              className="w-full pl-4 pr-12 py-3 rounded-2xl focus:outline-none bg-transparent text-[13px] text-slate-800 placeholder:text-slate-400"
             />
             <button
               type="submit"
@@ -1691,43 +2042,230 @@ export default function NonLinearChatInterface() {
           </form>
         </div>
 
-        {/* 텍스트 선택 메뉴 */}
-        {selectionMenu.visible && (
-          <div
-            style={{
-              position: 'fixed',
-              left: selectionMenu.x,
-              top:  selectionMenu.y,
-              transform: 'translate(-50%, -100%)',
-            }}
-            onMouseDown={(e) => e.preventDefault()}
-            className="z-50 flex items-center gap-1.5 p-1.5 bg-slate-900 rounded-xl shadow-xl border border-slate-700"
-          >
-            <button
-              onClick={handleCreateNote}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
-            >
-              <StickyNote className="w-4 h-4 text-yellow-300" />
-              <span>{t('memoButton')}</span>
-            </button>
-            <div className="w-px h-5 bg-white/15 mx-1" />
-            <button
-              onClick={handleCreateSideChat}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
-            >
-              <MessageSquarePlus className="w-4 h-4 text-cyan-300" />
-              <span>{t('deepDiveButton')}</span>
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* ══════════════ 우측 패널: 추가질문 병렬 대화창 ══════════════ */}
-      <div className="flex flex-col flex-[0_0_30%] min-w-0 h-full border-l border-slate-200 bg-white">
+      {/* ══════════════ 세로 목차 컬럼 (Conversation Index) ══════════════ */}
+      {(
+        <div
+          ref={sidebarRef}
+          className="relative flex flex-col h-full overflow-y-auto scrollbar-none"
+          style={{
+            width:     LAYOUT.TOC_W,
+            minWidth:  LAYOUT.TOC_MIN_W,
+            flexShrink: 0,
+            flexGrow:   0,
+            background:  '#dce3ed',
+            borderLeft:  '1px solid #c8d3e0',
+            borderRight: '1px solid #c8d3e0',
+          }}
+        >
+          {/* 헤더 */}
+          <div
+            className="shrink-0 px-3 pt-3 pb-2 border-b border-[#c8d3e0] sticky top-0 z-20"
+            style={{ background: '#dce3ed' }}
+          >
+            <div className="flex items-center gap-1.5">
+              <MessageSquarePlus className="w-3 h-3 text-cyan-500 shrink-0" />
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                {t('deepDivePanelHeader')}
+              </span>
+            </div>
+          </div>
+
+          {/* 빈 상태: 고스트 미리보기 */}
+          {orderedTree.length === 0 && (() => {
+            const INDENT = 11;
+            const ghostTitles = t('ghostTitles');
+            const ghost = [
+              { depth: 0, label: '1',     title: ghostTitles[0], h: 52 },
+              { depth: 1, label: '1-1',   title: ghostTitles[1], h: 44 },
+              { depth: 2, label: '1-1-1', title: ghostTitles[2], h: 38 },
+            ];
+            const ghostStackPx       = ghost.reduce((sum, row) => sum + row.h, 0);
+            const sidebarHeaderPx    = 46;
+            const emptyHintVertAlign = `translateY(calc(-0.5 * (${sidebarHeaderPx}px + ${ghostStackPx}px)))`;
+            return (
+              <div className="relative flex flex-col flex-1" style={{ minHeight: 0 }} aria-hidden="true">
+                {ghost.map(({ depth, label, title, h }) => {
+                  const bg =
+                    depth === 0 ? 'rgba(255,255,255,0.30)'
+                    : depth === 1 ? 'rgba(232,240,254,0.35)'
+                    : 'rgba(210,227,252,0.40)';
+                  const pl = 9 + depth * INDENT;
+                  return (
+                    <div
+                      key={depth}
+                      style={{
+                        position: 'relative', minHeight: h,
+                        paddingLeft: pl, paddingRight: 8,
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        background: bg,
+                        borderBottom: '0.5px solid rgba(150,170,195,0.30)',
+                        borderRight:  '0.5px solid rgba(150,170,195,0.30)',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', left: 0, top: '12%', bottom: '12%', width: 4,
+                        borderRadius: '0 3px 3px 0', background: 'rgba(37,99,235,0.18)',
+                      }} />
+                      {depth > 0 && (
+                        <svg width={depth === 1 ? 8 : 7} height={depth === 1 ? 8 : 7}
+                          viewBox="0 0 9 9" fill="none" style={{ flexShrink: 0, opacity: 0.30 }}>
+                          <path d="M2 1.5 L2 7 L7.5 7" stroke="#475569" strokeWidth="1.6"
+                            strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                      <span style={{
+                        flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: depth === 0 ? 13 : depth === 1 ? 11 : undefined,
+                        height: depth === 0 ? 13 : depth === 1 ? 11 : undefined,
+                        minWidth: depth === 2 ? 20 : undefined,
+                        padding: depth === 2 ? '1px 4px' : undefined,
+                        fontSize: depth === 0 ? '8px' : '7px', fontWeight: 600,
+                        borderRadius: 9999,
+                        background: 'rgba(37,99,235,0.15)', color: 'rgba(37,99,235,0.45)',
+                      }}>{label}</span>
+                      <span style={{
+                        fontSize: depth === 0 ? 11 : depth === 1 ? 10 : 9,
+                        fontWeight: depth === 0 ? 700 : depth === 1 ? 500 : 400,
+                        color: 'rgba(60,90,130,0.35)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>{title}</span>
+                    </div>
+                  );
+                })}
+                {/* 안내 문구 — 병렬 대화창 빈 화면과 세로 정렬 맞춤 */}
+                <div
+                  className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center"
+                  style={{ transform: emptyHintVertAlign }}
+                >
+                  <MessageSquarePlus className="w-9 h-9 opacity-25 text-slate-500" />
+                  <p className="text-[13px] leading-relaxed whitespace-pre-line" style={{ color: 'rgba(90,110,140,0.70)' }}>
+                    {t('tocGuide')}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 트리 아이템 */}
+          {orderedTree.map((chat) => {
+            const isActive  = chat.id === activeThreadId;
+            const treeLabel = treeLabelMap[chat.id] ?? '';
+            const depth     = chat.depth || 0;
+            const INDENT    = 11;
+            const isFlashing =
+              flashingId === chat.id ||
+              !!(hoveredHighlightId &&
+                highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === chat.id));
+            const isHovered = hoveredTabId === chat.id;
+
+            const tabMinHeight = depth === 0 ? 52 : depth === 1 ? 44 : 38;
+            const depthBg      = depth === 0 ? '#FFFFFF' : depth === 1 ? '#E8F0FE' : '#D2E3FC';
+            const hoverBg      = depth === 0 ? '#EEF3FF' : depth === 1 ? '#D5E5FD' : '#BFCFF8';
+            const activeBg     = depth === 0 ? '#DBEAFE' : depth === 1 ? '#BFDBFE' : '#93C5FD';
+            const depthShadow  = depth === 0
+              ? '0 3px 8px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.07)'
+              : 'inset 0 2px 4px rgba(0,0,0,0.05)';
+            const pl = 9 + depth * INDENT;
+
+            return (
+              <div
+                key={chat.id}
+                data-tab-id={chat.id}
+                style={{
+                  position: 'relative', minHeight: tabMinHeight,
+                  paddingLeft: pl, paddingRight: 6,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: isActive ? activeBg : (isHovered || isFlashing) ? hoverBg : depthBg,
+                  borderBottom: '0.5px solid rgba(150,170,195,0.25)',
+                  boxShadow: isActive ? depthShadow : 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.1s ease, box-shadow 0.15s ease',
+                }}
+                onMouseEnter={() => {
+                  setHoveredTabId(chat.id);
+                  const hl = highlights.find((h) => h.links?.some((l) => l.id === chat.id));
+                  setHoveredPostItId(hl?.id ?? null);
+                }}
+                onMouseLeave={() => {
+                  setHoveredTabId(null);
+                  setHoveredPostItId(null);
+                }}
+                onClick={() => setActiveSideChatId(chat.id)}
+              >
+                {/* L자 연결선 */}
+                {depth > 0 && (
+                  <svg width={depth === 1 ? 8 : 7} height={depth === 1 ? 8 : 7}
+                    viewBox="0 0 9 9" fill="none" style={{ flexShrink: 0, opacity: 0.45 }}>
+                    <path d="M2 1.5 L2 7 L7.5 7" stroke="#475569" strokeWidth="1.6"
+                      strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+                {/* 배지 */}
+                <span style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 20, height: depth === 0 ? 14 : 12,
+                  padding: '1px 4px',
+                  fontSize: depth === 0 ? '8px' : '7px', fontWeight: 700,
+                  borderRadius: 9999,
+                  background: isActive ? 'rgba(37,99,235,0.85)' : 'rgba(37,99,235,0.15)',
+                  color: isActive ? '#fff' : 'rgba(37,99,235,0.6)',
+                }}>{treeLabel}</span>
+                {/* 제목 */}
+                <span style={{
+                  flex: 1,
+                  fontSize: depth === 0 ? 11 : 10,
+                  fontWeight: isActive ? 600 : depth === 0 ? 500 : 400,
+                  color: isActive ? '#1e3a5f' : isHovered ? '#334155' : 'rgba(51,65,85,0.75)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{chat.title}</span>
+                {/* 액션 버튼 */}
+                {isHovered && (
+                  <div className="shrink-0 flex items-center gap-0.5">
+                    <button
+                      className="p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); scrollToHighlight(chat.id); }}
+                      title={t('moveToText')}
+                    >
+                      <MoveUpRight className="w-2.5 h-2.5" />
+                    </button>
+                    <button
+                      className="p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-red-400 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); removeSideChat(chat.id); }}
+                      title={t('deleteTitle')}
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ══════════════ 우측 패널: Deep Dive ══════════════ */}
+      <div
+        className="relative flex flex-col h-full border-l border-slate-200 bg-white"
+        style={{
+          width:     LAYOUT.RIGHT_PANEL_W,
+          minWidth:  LAYOUT.RIGHT_PANEL_MIN_W,
+          flexShrink: 0,
+          flexGrow:   0,
+        }}
+      >
         <PaperOverlay />
 
-        {/* ── 패널 헤더 ── */}
-        <div className="relative shrink-0 px-4 py-3 border-b border-slate-200/60 bg-white/70 backdrop-blur-sm flex items-center gap-2">
+        {/* 적층 종이 효과 (우측 경계) */}
+        <div className="pointer-events-none absolute right-0 top-0 h-full z-0 flex flex-row-reverse">
+          <div style={{ width: 5, background: '#dee2e6', boxShadow: '-1px 0 0 #ced4da' }} />
+          <div style={{ width: 5, background: '#e9ecef', boxShadow: '-1px 0 0 #dee2e6' }} />
+          <div style={{ width: 6, background: '#f1f3f5' }} />
+        </div>
+
+        {/* 패널 헤더 */}
+        <div className="relative shrink-0 px-4 py-3 border-b border-slate-200/60 bg-white/70 backdrop-blur-sm flex items-center gap-2 z-10">
           <MessageSquarePlus className="w-4 h-4 text-cyan-500 shrink-0" />
           <span className="text-[13px] font-semibold text-slate-700">{t('deepDivePanelHeader')}</span>
           {sideChats.length > 0 && (
@@ -1739,7 +2277,7 @@ export default function NonLinearChatInterface() {
 
         {sideChats.length === 0 ? (
           /* ── 빈 상태 ── */
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 px-6 text-center">
+          <div className="relative flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 px-6 text-center">
             <MessageSquarePlus className="w-9 h-9 opacity-25" />
             {currentLang === 'en' ? (
               <p className="text-[13px] leading-relaxed">
@@ -1755,164 +2293,148 @@ export default function NonLinearChatInterface() {
               </p>
             )}
           </div>
-        ) : (
-          <div className="flex flex-col flex-1 min-h-0">
+        ) : activeThread ? (
+          <>
+            {/* 출처 텍스트 */}
+            <div className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-xl bg-cyan-50/70 border border-cyan-100/80">
+              <p className="text-[9.5px] font-semibold text-cyan-500 uppercase tracking-widest mb-0.5">
+                {t('sourceRefShort')}
+              </p>
+              <p className="text-[11.5px] text-slate-600 leading-snug line-clamp-2">
+                &ldquo;{activeThread.sourceText}&rdquo;
+              </p>
+            </div>
 
-            {/* ── 스레드 탭 목록 ── */}
-            <div className="shrink-0 flex overflow-x-auto border-b border-slate-200 bg-white/60 scrollbar-none">
-              {sideChats.map((chat) => {
-                const isActive  = chat.id === activeThreadId;
-                const badgeNum  = highlightIndexMap[chat.id];
-                const isFlashing =
-                  flashingId === chat.id ||
-                  (hoveredHighlightId &&
-                    highlights.find((h) => h.id === hoveredHighlightId)?.links?.some((l) => l.id === chat.id));
-
-                const isTabHovered = hoveredTabId === chat.id;
-                const tabTransform = isFlashing
-                  ? 'translateY(-2px)'
-                  : isActive || isTabHovered
-                    ? 'translateY(-1px)'
-                    : 'none';
-                const tabShadow = isFlashing
-                  ? '0 4px 14px rgba(34,211,238,0.35)'
-                  : isActive
-                    ? '0 2px 8px rgba(34,211,238,0.20)'
-                    : isTabHovered
-                      ? '0 2px 6px rgba(0,0,0,0.08)'
-                      : 'none';
-
+            {/* 메시지 목록 */}
+            <div
+              className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-3.5 text-left"
+              onMouseUp={handleMouseUpSide}
+            >
+              {activeThread.messages.map((msg) => {
+                const isU = msg.sender === 'user';
                 return (
                   <div
-                    key={chat.id}
-                    style={{
-                      transform: tabTransform,
-                      boxShadow: tabShadow,
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease',
-                    }}
-                    className={`group relative flex items-center gap-1.5 px-3 py-2.5 cursor-pointer shrink-0 border-b-2 select-none ${
-                      isActive
-                        ? 'border-cyan-500 bg-cyan-50/60 text-slate-900'
-                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                    } ${isFlashing ? 'bg-cyan-100/80' : ''}`}
-                    onMouseEnter={() => {
-                      setHoveredTabId(chat.id);
-                      const hl = highlights.find((h) => h.links?.some((l) => l.id === chat.id));
-                      setHoveredPostItId(hl?.id ?? null);
-                    }}
-                    onMouseLeave={() => {
-                      setHoveredTabId(null);
-                      setHoveredPostItId(null);
-                    }}
-                    onClick={() => setActiveSideChatId(chat.id)}
+                    key={msg.id}
+                    data-side-message-id={msg.id}
+                    className={`flex items-start ${isU ? 'justify-end' : 'justify-start'}`}
                   >
-                    {badgeNum !== undefined && (
-                      <span className={`flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold shrink-0 ${
-                        isActive ? 'bg-cyan-500 text-white' : 'bg-slate-200 text-slate-600'
-                      }`}>
-                        {badgeNum}
-                      </span>
-                    )}
-                    <span className={`text-[12px] font-medium max-w-[90px] truncate ${isActive ? 'font-semibold' : ''}`}>
-                      {chat.title}
-                    </span>
-                    <button
-                      className="ml-0.5 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
-                      onClick={(e) => { e.stopPropagation(); scrollToHighlight(chat.id); }}
-                      title={t('moveToText')}
+                    <div
+                      data-side-message-text-root
+                      className={`max-w-[80%] text-left font-normal select-text ${
+                        isU
+                          ? 'bg-slate-50 text-slate-700 border border-slate-100 rounded-2xl rounded-tr-sm px-3.5 py-2 text-[12.5px] leading-[1.7] shadow-sm'
+                          : 'bg-white border border-slate-100 text-slate-700 rounded-2xl rounded-tl-sm px-3.5 py-2.5 shadow-postit side-chat-markdown-wrap'
+                      }`}
                     >
-                      <MoveUpRight className="w-3 h-3" />
-                    </button>
-                    <button
-                      className="ml-0.5 p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-slate-600 transition-all shrink-0"
-                      onClick={(e) => { e.stopPropagation(); removeSideChat(chat.id); }}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                      {isU ? (
+                        <span className="whitespace-pre-wrap block">{msg.text}</span>
+                      ) : msg.text ? (
+                        <div className="side-chat-markdown">
+                          <ReactMarkdown
+                            rehypePlugins={markdownRehypePlugins}
+                            components={markdownComponents}
+                          >
+                            {msg.text}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <span className="inline-flex gap-1">
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
+              <div ref={sideChatBottomRef} />
             </div>
 
-            {/* ── 활성 스레드 ── */}
-            {activeThread && (
-              <>
-                {/* 출처 텍스트 */}
-                <div className="shrink-0 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-[11px] font-semibold text-cyan-600 uppercase tracking-wide">{t('sourceText')}</p>
-                  </div>
-                  <p className="text-[13px] text-slate-700 leading-snug line-clamp-2">
-                    &ldquo;{activeThread.sourceText}&rdquo;
-                  </p>
-                </div>
-
-                {/* 메시지 목록 */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-3 text-left">
-                  {activeThread.messages.map((msg) => {
-                    const isU = msg.sender === 'user';
-                    return (
-                      <div key={msg.id} className={`flex items-start ${isU ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                          className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-left font-medium ${
-                            isU
-                              ? 'bg-slate-900 text-white rounded-tr-md text-[15px] leading-[1.6]'
-                              : 'bg-white border border-slate-200/80 text-slate-900 rounded-tl-md shadow-postit side-chat-markdown-wrap'
-                          }`}
-                        >
-                          {isU ? (
-                            <span className="whitespace-pre-wrap block">{msg.text}</span>
-                          ) : msg.text ? (
-                            <div className="side-chat-markdown">
-                              <ReactMarkdown
-                                rehypePlugins={markdownRehypePlugins}
-                                components={markdownComponents}
-                              >
-                                {msg.text}
-                              </ReactMarkdown>
-                            </div>
-                          ) : (
-                            <span className="inline-flex gap-1">
-                              <span className="typing-dot" />
-                              <span className="typing-dot" />
-                              <span className="typing-dot" />
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={sideChatBottomRef} />
-                </div>
-
-                {/* 입력 */}
-                <form
-                  onSubmit={(e) => handleSideSubmit(activeThread.id, e)}
-                  className="shrink-0 px-4 pb-4 pt-2 border-t border-slate-200/60 bg-white/80 backdrop-blur-sm"
+            {/* 입력 */}
+            <form
+              onSubmit={(e) => handleSideSubmit(activeThread.id, e)}
+              className="shrink-0 px-4 pb-4 pt-2 border-t border-slate-100 bg-white/85 backdrop-blur-md"
+            >
+              <div className="relative flex items-center rounded-xl border border-slate-100 bg-white/90 shadow-sm focus-within:ring-2 focus-within:ring-cyan-300/40 focus-within:border-cyan-200 transition-all">
+                <input
+                  type="text"
+                  value={activeThread.input || ''}
+                  onChange={(e) => updateSideChatInput(activeThread.id, e.target.value)}
+                  placeholder={t('sideChatInputPlaceholder')}
+                  disabled={loadingSideChatIds.has(activeThread.id)}
+                  className="flex-1 pl-3 pr-9 py-2 bg-transparent text-[12.5px] text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 rounded-xl"
+                />
+                <button
+                  type="submit"
+                  disabled={loadingSideChatIds.has(activeThread.id)}
+                  className="absolute right-2 p-1 text-cyan-500 hover:bg-cyan-50 rounded-lg transition-colors disabled:opacity-35"
                 >
-                  <div className="relative flex items-center rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-cyan-400/40 focus-within:border-cyan-400/70 transition-all">
-                    <input
-                      type="text"
-                      value={activeThread.input || ''}
-                      onChange={(e) => updateSideChatInput(activeThread.id, e.target.value)}
-                      placeholder={t('sideChatInputPlaceholder')}
-                      disabled={loadingSideChatIds.has(activeThread.id)}
-                      className="flex-1 pl-4 pr-10 py-2.5 bg-transparent text-[14px] text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60 rounded-xl"
-                    />
-                    <button
-                      type="submit"
-                      disabled={loadingSideChatIds.has(activeThread.id)}
-                      className="absolute right-2 p-1.5 text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors disabled:opacity-40"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-slate-400 text-[13px] px-4 text-center">
+            {t('selectThreadHint')}
           </div>
         )}
       </div>
+
+      {/* ══ 세로 목차 돌출 바 포털 ══ */}
+      {protrBarInfo && createPortal(
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            left:   protrBarInfo.sidebarLeft - 5,
+            top:    protrBarInfo.top,
+            height: protrBarInfo.height,
+            width: 8,
+            background: 'linear-gradient(180deg, #60a5fa 0%, #2563eb 100%)',
+            borderRadius: '3px 0 0 3px',
+            boxShadow: '-2px 0 7px rgba(37,99,235,0.18), -1px 0 3px rgba(37,99,235,0.10)',
+            zIndex: 200,
+            pointerEvents: 'none',
+            transition: 'top 0.15s ease, height 0.15s ease',
+          }}
+        />,
+        document.body
+      )}
+
+      {/* ══ 선택 메뉴 포털 (viewport 최상단 z-9999) ══ */}
+      {selectionMenu.visible && createPortal(
+        <div
+          data-selection-menu
+          style={{
+            position: 'fixed',
+            zIndex: 9999,
+            left: selectionMenu.x,
+            top:  selectionMenu.y,
+            transform: 'translate(-50%, -100%)',
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          className="flex items-center gap-1.5 p-1.5 bg-slate-900 rounded-xl shadow-xl border border-slate-700"
+        >
+          <button
+            onClick={handleCreateNote}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
+          >
+            <StickyNote className="w-4 h-4 text-yellow-300" />
+            <span>{t('memoButton')}</span>
+          </button>
+          <div className="w-px h-5 bg-white/15 mx-1" />
+          <button
+            onClick={handleCreateSideChat}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 text-white text-[13px] font-semibold transition-colors"
+          >
+            <MessageSquarePlus className="w-4 h-4 text-cyan-300" />
+            <span>{t('deepDiveButton')}</span>
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

@@ -54,6 +54,63 @@ const sortedNoteIds = [...noteIds].sort((a, b) => a - b);
 - 하이라이트 클릭 시 연결된 숫자 칩이 강조되는 애니메이션 피드백을 제공한다.
 - AI 답변 생성은 스트리밍 방식으로 실시간 텍스트 출력 UX를 유지한다.
 
+## 레이아웃 너비 상수 규칙 (필수)
+
+패널 너비는 `App.jsx` 상단의 `LAYOUT` 객체가 **단일 진실 공급원(Single Source of Truth)**이다. 기능 구현·버그 수정 시 JSX 내 인라인 `%` 값이나 `px` 값을 **절대로 직접 수정하지 않는다**.
+
+```javascript
+// App.jsx 상단 상수 정의
+const LAYOUT = {
+  OVERLAY_SIDEBAR_W: 300,  // 오버레이 채팅 목록 사이드바
+  LEFT_NOTES_W:      250,  // 좌측 포스트잇 패널
+  TOC_W:             150,  // 세로 목차 (Conversation Index)
+  RIGHT_PANEL_W:     400,  // 우측 Deep Dive 패널
+  LEFT_NOTES_MIN_W:  180,
+  TOC_MIN_W:         120,
+  RIGHT_PANEL_MIN_W: 280,
+};
+```
+
+### 패널 너비 적용 패턴
+
+```javascript
+// ✅ 올바른 방법 — LAYOUT 상수 참조
+<div style={{ width: LAYOUT.LEFT_NOTES_W, minWidth: LAYOUT.LEFT_NOTES_MIN_W, flexShrink: 0, flexGrow: 0 }} />
+
+// ❌ 금지 — 하드코딩된 % 또는 px 직접 사용
+<div className="flex-[0_0_30%]" />
+<div style={{ width: 300 }} />
+```
+
+### flex 레이아웃 규칙
+
+- **고정 패널** (노트, TOC, Deep Dive): `flexShrink: 0, flexGrow: 0, width: LAYOUT.xxx`
+- **가변 중앙 패널**: `flex: '1 1 0', minWidth: 320` — 나머지 공간을 차지
+- 총 고정 너비가 `LEFT_NOTES_W + TOC_W + RIGHT_PANEL_W = 800px`이므로, 중앙 패널은 `뷰포트 - 800px`를 차지
+
+## React 훅 선언 순서 규칙 (필수)
+
+React 함수 컴포넌트 내에서 `const`/`let` 변수를 선언하기 **전에** 해당 변수를 `useEffect`/`useMemo`/`useCallback`의 **의존성 배열**이나 **콜백 내부**에서 참조하면 JavaScript TDZ(Temporal Dead Zone) 오류가 발생하여 화면이 흰색으로 렌더링된다.
+
+```javascript
+// ❌ 금지 — activeThreadId 선언 전에 useEffect 의존성 배열에서 참조
+useEffect(() => {
+  doSomethingWith(activeThreadId); // TDZ ReferenceError!
+}, [activeThreadId]);              // ← 여기도 TDZ
+
+const activeThreadId = activeSideChatId ?? sideChats[0]?.id ?? null; // 너무 늦음
+
+// ✅ 올바른 방법 — 파생 값을 먼저 선언한 뒤 useEffect 작성
+const activeThreadId = activeSideChatId ?? sideChats[0]?.id ?? null;
+
+useEffect(() => {
+  doSomethingWith(activeThreadId);
+}, [activeThreadId]);
+```
+
+- `useEffect`, `useMemo`, `useCallback` 작성 전에 해당 훅이 참조하는 모든 파생 `const`가 위쪽에 선언되었는지 확인한다.
+- 특히 **상태(useState)에서 파생된 값**(`activeThreadId`, `activeThread`, `centerTitle` 등)은 이를 소비하는 훅보다 항상 먼저 선언한다.
+
 ## Gemini API 호출 규칙 (필수)
 
 이 프로젝트는 `GEMINI_API_VERSION = 'v1'`을 사용한다. **v1 엔드포인트는 `config.systemInstruction`을 지원하지 않으며**, 이 필드를 넘기면 400 `INVALID_ARGUMENT` 오류가 발생한다.
