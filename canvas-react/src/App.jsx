@@ -6,6 +6,10 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
+import StartButton from './Experiment/StartButton.jsx';
+import { useExperiment } from './Experiment/ExperimentContext.jsx';
+import { useExperimentLog } from './Experiment/ExperimentLogContext.jsx';
 import {
   Bot,
   ChevronDown,
@@ -669,14 +673,295 @@ function MessageTextWithHighlightOverlays({
   );
 }
 
+/* ─────────────────── Auth Gate 컴포넌트 ─────────────────── */
+function AuthGate({ onLogin }) {
+  const [inputUserId, setInputUserId] = useState('');
+  const [inputApiKey, setInputApiKey] = useState('');
+  const [error,       setError]       = useState('');
+
+  const isValid = inputUserId.trim() !== '' && inputApiKey.trim() !== '';
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!inputUserId.trim() || !inputApiKey.trim()) {
+      setError('유효한 API Key를 입력해 주세요.');
+      return;
+    }
+    setError('');
+    onLogin(inputUserId.trim(), inputApiKey.trim());
+  };
+
+  return (
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f1f5f9',
+        fontFamily: FONT_STACK_KO,
+      }}
+    >
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 20,
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04)',
+        width: '100%',
+        maxWidth: 380,
+        margin: '0 24px',
+        padding: '40px 36px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
+      }}>
+
+        {/* 타이틀 */}
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <h1 style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: '#1e293b',
+            letterSpacing: '-0.03em',
+            whiteSpace: 'nowrap',
+            margin: 0,
+          }}>
+            비선형 AI 인터페이스
+          </h1>
+          <p style={{
+            fontSize: 13,
+            color: '#94a3b8',
+            marginTop: 6,
+            letterSpacing: '-0.01em',
+            whiteSpace: 'nowrap',
+          }}>
+            실험 세션을 시작하려면 아래 정보를 입력하세요
+          </p>
+        </div>
+
+        {/* 구분선 */}
+        <div style={{ height: 1, background: '#f1f5f9', marginBottom: 24 }} />
+
+        {/* 폼 */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', letterSpacing: '-0.01em' }}>
+              User ID
+            </label>
+            <input
+              type="text"
+              value={inputUserId}
+              onChange={(e) => setInputUserId(e.target.value)}
+              placeholder="실험 ID를 입력하세요 (예: user01)"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#1e293b',
+                fontSize: 14,
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'box-shadow 0.15s',
+              }}
+              onFocus={(e) => { e.target.style.boxShadow = '0 0 0 3px rgba(250,204,21,0.35)'; e.target.style.borderColor = 'transparent'; }}
+              onBlur={(e)  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = '#e2e8f0'; }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', letterSpacing: '-0.01em' }}>
+              Gemini API Key
+            </label>
+            <input
+              type="password"
+              value={inputApiKey}
+              onChange={(e) => setInputApiKey(e.target.value)}
+              placeholder="AI API Key를 입력하세요"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#1e293b',
+                fontSize: 14,
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'box-shadow 0.15s',
+              }}
+              onFocus={(e) => { e.target.style.boxShadow = '0 0 0 3px rgba(250,204,21,0.35)'; e.target.style.borderColor = 'transparent'; }}
+              onBlur={(e)  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = '#e2e8f0'; }}
+            />
+          </div>
+
+          {/* 유의 문구 */}
+          <p style={{
+            fontSize: 12.5,
+            fontWeight: 500,
+            color: '#ef4444',
+            textAlign: 'center',
+            lineHeight: 1.6,
+            wordBreak: 'keep-all',
+            margin: '2px 0 0',
+          }}>
+            실험 중에는 절대 새로고침을 하지 마세요.
+            <br />새로고침 시 자동으로 로그아웃됩니다.
+          </p>
+
+          {/* 보안 안내 */}
+          <p style={{
+            fontSize: 11.5,
+            color: '#94a3b8',
+            textAlign: 'center',
+            lineHeight: 1.65,
+            wordBreak: 'keep-all',
+            margin: '-4px 0 0',
+          }}>
+            입력하신 API Key는 외부 서버로 전송되지 않으며,
+            <br />브라우저 메모리에만 유지되다가 창을 닫으면 파기됩니다.
+          </p>
+
+          {/* 에러 */}
+          {error && (
+            <p style={{
+              fontSize: 13,
+              color: '#ef4444',
+              textAlign: 'center',
+              fontWeight: 500,
+              margin: '-4px 0 0',
+              wordBreak: 'keep-all',
+            }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={!isValid}
+            style={{
+              width: '100%',
+              padding: '12px 0',
+              borderRadius: 12,
+              border: 'none',
+              background: isValid ? '#facc15' : '#f1f5f9',
+              color: isValid ? '#1e293b' : '#94a3b8',
+              fontSize: 15,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              letterSpacing: '-0.01em',
+              cursor: isValid ? 'pointer' : 'not-allowed',
+              transition: 'background 0.15s, color 0.15s',
+              marginTop: 4,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => { if (isValid) e.target.style.background = '#fbbf24'; }}
+            onMouseLeave={(e) => { if (isValid) e.target.style.background = '#facc15'; }}
+          >
+            시작하기 (Start Experiment)
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────── 메인 컴포넌트 ─────────────────── */
 export default function NonLinearChatInterface() {
+  const navigate = useNavigate();
+
+  /* ── 공통 실험 Context (로그인·블록 메타데이터) ── */
+  const {
+    userId:    ctxUserId,
+    apiKey:    ctxApiKey,
+    blockIndex: ctxBlockIndex,
+    isLoggedIn: ctxIsLoggedIn,
+  } = useExperiment();
+
+  /* ── 실험 로그 API (Proposed 전용 이벤트 수집) ── */
+  const {
+    startAIWait,
+    stopAIWait,
+    logPromptSubmit,
+    logMemoCreate,
+    startMemoEdit,
+    stopMemoEdit,
+    logMemoDelete,
+    logMapsToBody,
+    logMapsToElement,
+    startMemoDragDrop,
+    stopMemoDragDrop,
+    logParallelWindowCreate,
+    logParallelWindowReactivate,
+    logParallelWindowDelete,
+  } = useExperimentLog();
+
+  /* ── Auth 상태 (내부) ── */
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userId,     setUserId]     = useState('');
+  const [userApiKey, setUserApiKey] = useState('');
+
+  const handleLogin = useCallback((id, key) => {
+    /* userId별 키로 저장된 데이터 로드 */
+    const histKey = `${STORAGE_KEY_HISTORY}-${id}`;
+    const actKey  = `${STORAGE_KEY_ACTIVE_ID}-${id}`;
+
+    let history;
+    const savedHist = localStorage.getItem(histKey);
+    if (savedHist) {
+      try {
+        history = JSON.parse(savedHist).map((c) => ({
+          ...c,
+          data: { ...c.data, highlights: migrateHighlights(c.data?.highlights) },
+        }));
+      } catch { /* ignore */ }
+    }
+    if (!history || history.length === 0) {
+      history = [{
+        id: 1,
+        title: '비선형 상호작용 캔버스',
+        data: { messages: initialData.messages, notes: [], sideChats: [], highlights: [] },
+      }];
+    }
+
+    const savedActiveId = localStorage.getItem(actKey);
+    const activeId = savedActiveId ? JSON.parse(savedActiveId) : history[0].id;
+    const active   = history.find((c) => c.id === activeId) || history[0];
+
+    /* 모든 상태를 한 번에 설정 (React 18 배치 업데이트) */
+    setChatHistory(history);
+    setActiveChatId(activeId);
+    setMainMessages(active?.data?.messages ?? initialData.messages);
+    setNotes((active?.data?.notes ?? []).map((n) => ({
+      stored: true, snapping: false, floatX: 0, floatY: 0, ...n,
+    })));
+    setSideChats(active?.data?.sideChats ?? []);
+    setHighlights(migrateHighlights(active?.data?.highlights ?? []));
+    setActiveSideChatId(null);
+
+    setUserId(id);
+    setUserApiKey(key);
+    setIsLoggedIn(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Context 로그인 연동: 공통 로그인 화면을 거쳐 온 경우 자동 초기화 ── */
+  useEffect(() => {
+    if (ctxIsLoggedIn && ctxUserId && ctxApiKey && !isLoggedIn) {
+      handleLogin(ctxUserId, ctxApiKey);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Gemini AI ── */
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   const ai = useMemo(() => {
-    if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
-  }, [apiKey]);
+    if (!userApiKey) return null;
+    return new GoogleGenAI({ apiKey: userApiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
+  }, [userApiKey]);
 
   /* ── 언어 감지: URL 파라미터 → 브라우저 설정 순서 ── */
   const [currentLang] = useState(() => {
@@ -693,32 +978,19 @@ export default function NonLinearChatInterface() {
 
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log('API 키 로드:', apiKey ? '✅' : '❌');
       console.log('사용 모델:', GEMINI_MODEL);
       console.log('현재 언어:', currentLang);
     }
-  }, [apiKey, currentLang]);
+  }, [currentLang]);
 
-  /* ── 채팅 히스토리 ── */
-  const [chatHistory, setChatHistory] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((c) => ({
-          ...c,
-          data: { ...c.data, highlights: migrateHighlights(c.data?.highlights) },
-        }));
-      } catch { /* ignore */ }
-    }
-    return [
-      {
-        id: 1,
-        title: '비선형 상호작용 캔버스',
-        data: { messages: initialData.messages, notes: [], sideChats: [], highlights: [] },
-      },
-    ];
-  });
+  /* ── 채팅 히스토리 (로그인 시 handleLogin에서 userId별로 로드됨) ── */
+  const [chatHistory, setChatHistory] = useState([
+    {
+      id: 1,
+      title: '비선형 상호작용 캔버스',
+      data: { messages: initialData.messages, notes: [], sideChats: [], highlights: [] },
+    },
+  ]);
 
   const handleDeleteChat = (id, e) => {
     if (e) e.stopPropagation();
@@ -738,10 +1010,7 @@ export default function NonLinearChatInterface() {
     }
   };
 
-  const [activeChatId, setActiveChatId] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_ID);
-    return saved ? JSON.parse(saved) : 1;
-  });
+  const [activeChatId, setActiveChatId] = useState(1);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -883,9 +1152,10 @@ export default function NonLinearChatInterface() {
   }, [activeChatId, mainMessages, notes, sideChats, highlights]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_HISTORY,   JSON.stringify(chatHistory));
-    localStorage.setItem(STORAGE_KEY_ACTIVE_ID, JSON.stringify(activeChatId));
-  }, [activeChatId, chatHistory]);
+    if (!userId) return;
+    localStorage.setItem(`${STORAGE_KEY_HISTORY}-${userId}`,   JSON.stringify(chatHistory));
+    localStorage.setItem(`${STORAGE_KEY_ACTIVE_ID}-${userId}`, JSON.stringify(activeChatId));
+  }, [userId, activeChatId, chatHistory]);
 
   /* ── 새 채팅 / 채팅 불러오기 ── */
   const handleNewChat = () => {
@@ -938,30 +1208,45 @@ export default function NonLinearChatInterface() {
   const scrollToPostIt = useCallback((id) => {
     // 사이드챗이면 우측 패널에서 해당 스레드 활성화
     if (sideChats.some((c) => c.id === id)) {
+      const windowLabel = treeLabelMap[id] ?? String(id);
+      /* 이미 활성화된 창이면 재활성화, 처음이면 최초 이동(MAPS_TO_ELEMENT) */
+      if (id === activeSideChatId) {
+        logParallelWindowReactivate({ windowId: `parallel_window_${windowLabel}` });
+      } else {
+        logMapsToElement({ targetType: 'parallel_window', targetId: `parallel_window_${windowLabel}` });
+      }
       setActiveSideChatId(id);
       setFlashingId(id);
       setTimeout(() => setFlashingId(null), 1500);
       return;
     }
     // 노트는 기존 방식대로 스크롤
+    logMapsToElement({ targetType: 'memo', targetId: String(id) });
     const el = postItRefs.current[id];
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setFlashingId(id);
       setTimeout(() => setFlashingId(null), 1500);
     }
-  }, [sideChats]);
+  }, [sideChats, activeSideChatId, treeLabelMap, logMapsToElement, logParallelWindowReactivate]);
 
   const scrollToHighlight = useCallback(
     (postitId) => {
       const hl = highlights.find((h) => h.links?.some((l) => l.id === postitId));
       if (!hl) return;
+      /* 어느 타입의 요소에서 본문으로 이동했는지 판별 */
+      const link = hl.links?.find((l) => l.id === postitId);
+      const sourceType = link?.type === 'chat' ? 'parallel_window' : 'memo';
+      const windowLabel = sourceType === 'parallel_window'
+        ? `parallel_window_${treeLabelMap[postitId] ?? String(postitId)}`
+        : String(postitId);
+      logMapsToBody({ sourceType, sourceId: windowLabel });
       const el = document.getElementById(`highlight-${hl.id}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setFlashingHighlightId(hl.id);
       setTimeout(() => setFlashingHighlightId(null), 3100);
     },
-    [highlights]
+    [highlights, treeLabelMap, logMapsToBody]
   );
 
   const handlePostItClick = (e, id) => {
@@ -1071,6 +1356,7 @@ export default function NonLinearChatInterface() {
       height: NOTE_CARD_H,
     };
     setNotes((prev) => [...prev, newNote]);
+    logMemoCreate({ memoId: String(now), sourceText: selectionMenu.text });
 
     // 같은 구간 하이라이트에 link 추가, 없으면 새로 생성
     const existingHl =
@@ -1118,11 +1404,17 @@ export default function NonLinearChatInterface() {
     const parentDepth  = parentChatId
       ? (orderedTree.find((c) => c.id === parentChatId)?.depth ?? 0)
       : -1;
+    const newDepth = parentDepth + 1;
+
+    /* 꼬리질문 ID: 부모 레이블 없으면 루트 카운터, 있으면 "부모레이블-n" */
+    const siblingCount = sideChats.filter((c) => c.parentId === parentChatId).length + 1;
+    const parentLabel  = parentChatId ? (treeLabelMap[parentChatId] ?? '') : '';
+    const newWindowId  = parentLabel ? `${parentLabel}-${siblingCount}` : String(siblingCount);
 
     const newChat = {
       id: now,
       parentId: parentChatId,
-      depth: parentDepth + 1,
+      depth: newDepth,
       sourceText: selectionMenu.text,
       title: truncateTitle(selectionMenu.text),
       messages: [{ id: 1, sender: 'ai', text: t('sideChatInitMsg')(selectionMenu.text) }],
@@ -1130,6 +1422,7 @@ export default function NonLinearChatInterface() {
     };
     setSideChats((prev) => [...prev, newChat]);
     setActiveSideChatId(now);
+    logParallelWindowCreate({ windowId: newWindowId, depth: newDepth });
 
     const existingHl =
       highlights.find(
@@ -1172,6 +1465,7 @@ export default function NonLinearChatInterface() {
 
   /* ── 포스트잇 삭제 (link 제거 → highlights 고아 정리) ── */
   const removeNote = (noteId) => {
+    logMemoDelete({ memoId: String(noteId) });
     setNotes((prev) => prev.filter((n) => n.id !== noteId));
     setHighlights((prev) =>
       prev
@@ -1181,6 +1475,8 @@ export default function NonLinearChatInterface() {
   };
 
   const removeSideChat = (chatId) => {
+    const windowLabel = treeLabelMap[chatId] ?? String(chatId);
+    logParallelWindowDelete({ windowId: `parallel_window_${windowLabel}` });
     setSideChats((prev) => prev.filter((c) => c.id !== chatId));
     setActiveSideChatId((cur) => (cur === chatId ? null : cur));
     setHighlights((prev) =>
@@ -1214,6 +1510,8 @@ export default function NonLinearChatInterface() {
     const text = mainInput.trim();
     if (!text) return;
 
+    logPromptSubmit({ location: 'main', targetWindowId: 'main_window' });
+
     const userMsg = { id: Date.now(), sender: 'user', text };
     setMainMessages((prev) => [...prev, userMsg]);
     ensureSessionTitle(text);
@@ -1223,6 +1521,7 @@ export default function NonLinearChatInterface() {
     setStreamingAiMsgId(aiMsgId);
     setIsMainLoading(true);
     setMainMessages((prev) => [...prev, { id: aiMsgId, sender: 'ai', text: '' }]);
+    startAIWait();
 
     try {
       if (!ai) throw new Error('API 키 없음');
@@ -1250,6 +1549,7 @@ export default function NonLinearChatInterface() {
         )
       );
     } finally {
+      stopAIWait();
       setIsMainLoading(false);
       setStreamingAiMsgId(null);
     }
@@ -1260,6 +1560,12 @@ export default function NonLinearChatInterface() {
     e.preventDefault();
     const chat = sideChats.find((c) => c.id === chatId);
     if (!chat || !chat.input?.trim() || loadingSideChatIds.has(chatId)) return;
+
+    const windowLabel = treeLabelMap[chatId] ?? String(chatId);
+    logPromptSubmit({
+      location:       'parallel',
+      targetWindowId: `parallel_window_${windowLabel}`,
+    });
 
     const text = chat.input.trim();
     const userMsg = { id: Date.now(), sender: 'user', text };
@@ -1278,6 +1584,7 @@ export default function NonLinearChatInterface() {
           : c
       )
     );
+    startAIWait();
 
     try {
       const tr = translations[currentLang];
@@ -1325,6 +1632,7 @@ export default function NonLinearChatInterface() {
         )
       );
     } finally {
+      stopAIWait();
       setLoadingSideChatIds((prev) => { const s = new Set(prev); s.delete(chatId); return s; });
     }
   };
@@ -1403,6 +1711,7 @@ export default function NonLinearChatInterface() {
   const startDrag = (e, id, type, itemX, itemY) => {
     e.preventDefault();
     dragMoved.current = false;
+    if (type === 'note') startMemoDragDrop(String(id));
 
     if (type === 'note') {
       const note = notes.find((n) => n.id === id);
@@ -1481,6 +1790,7 @@ export default function NonLinearChatInterface() {
 
     const onUp = () => {
       if (dragInfo?.type === 'note') {
+        stopMemoDragDrop(String(dragInfo.id));
         const nid       = dragInfo.id;
         const noteState = notes.find((n) => n.id === nid);
         const panelEl   = leftPanelRef.current;
@@ -1542,6 +1852,10 @@ export default function NonLinearChatInterface() {
   /* ════════════════════════════════════════
      렌더
   ════════════════════════════════════════ */
+  if (!isLoggedIn) {
+    return <AuthGate onLogin={handleLogin} />;
+  }
+
   return (
     <div
       className="flex h-screen w-screen overflow-hidden antialiased text-slate-900 bg-white tracking-tight"
@@ -1645,6 +1959,7 @@ export default function NonLinearChatInterface() {
       {/* ══════════════ 좌측 패널: 수납 구역 ══════════════ */}
       <div
         ref={leftPanelRef}
+        data-scroll-section="notes_panel"
         className="relative h-full overflow-hidden border-r border-slate-200 bg-white"
         style={{
           width:     LAYOUT.LEFT_NOTES_W,
@@ -1792,6 +2107,8 @@ export default function NonLinearChatInterface() {
                       placeholder={t('notePlaceholder')}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
+                      onFocus={() => startMemoEdit(String(note.id))}
+                      onBlur={(e) => stopMemoEdit(String(note.id), e.target.value.length)}
                     />
                   )}
                 </div>
@@ -1932,6 +2249,8 @@ export default function NonLinearChatInterface() {
                     placeholder={t('notePlaceholder')}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
+                    onFocus={() => startMemoEdit(String(note.id))}
+                    onBlur={(e) => stopMemoEdit(String(note.id), e.target.value.length)}
                   />
                 )}
               </motion.div>
@@ -1956,18 +2275,31 @@ export default function NonLinearChatInterface() {
 
         {/* 헤더 */}
         <div className="relative shrink-0 px-7 py-4 border-b border-slate-200/60 flex items-center gap-3 bg-white/70 backdrop-blur-sm">
-          <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shadow-sm">
+          <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shadow-sm shrink-0">
             <Bot className="w-4 h-4 text-white" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[12.5px] font-semibold text-slate-800 truncate">{centerTitle}</div>
-            <div className="text-[10.5px] text-slate-400 truncate">{t('centerSubtitle')}</div>
+            <div className="text-[10.5px] text-slate-400 truncate">
+              {t('centerSubtitle')}{ctxBlockIndex > 0 ? ` · Block ${ctxBlockIndex}` : ''}
+            </div>
           </div>
+          {/* ── 인터페이스 선택으로 돌아가기 ── */}
+          <button
+            onClick={() => navigate('/experiment-select')}
+            className="text-[12px] text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 shrink-0"
+          >
+            ← 인터페이스 선택
+          </button>
+
+          {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
+          <StartButton />
         </div>
 
         {/* 메시지 스크롤 영역 */}
         <div
           ref={centerScrollRef}
+          data-scroll-section="main_canvas"
           className="relative flex-1 overflow-y-auto overflow-x-hidden px-7 py-8 space-y-7 pb-28"
         >
           {mainMessages.map((msg) => {
@@ -2048,6 +2380,7 @@ export default function NonLinearChatInterface() {
       {(
         <div
           ref={sidebarRef}
+          data-scroll-section="toc"
           className="relative flex flex-col h-full overflow-y-auto scrollbar-none"
           style={{
             width:     LAYOUT.TOC_W,
@@ -2192,7 +2525,12 @@ export default function NonLinearChatInterface() {
                   setHoveredTabId(null);
                   setHoveredPostItId(null);
                 }}
-                onClick={() => setActiveSideChatId(chat.id)}
+                onClick={() => {
+                  if (chat.id !== activeThreadId) {
+                    logParallelWindowReactivate({ windowId: `parallel_window_${treeLabelMap[chat.id] ?? String(chat.id)}` });
+                  }
+                  setActiveSideChatId(chat.id);
+                }}
               >
                 {/* L자 연결선 */}
                 {depth > 0 && (
@@ -2307,6 +2645,7 @@ export default function NonLinearChatInterface() {
 
             {/* 메시지 목록 */}
             <div
+              data-scroll-section={`parallel_window_${treeLabelMap[activeThread?.id] ?? String(activeThread?.id ?? '')}`}
               className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-3.5 text-left"
               onMouseUp={handleMouseUpSide}
             >
