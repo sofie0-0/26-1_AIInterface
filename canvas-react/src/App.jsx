@@ -86,6 +86,11 @@ const translations = {
     renameTitle: '이름 변경',
     deleteTitle: '삭제',
     moveToText: '본문으로 이동',
+    cancelLabel: '취소',
+    confirmNoteDeleteTitle: '메모 삭제',
+    confirmNoteDeleteMsg: '메모와 연결된 하이라이트가 함께 삭제됩니다.',
+    confirmChatDeleteTitle: '추가질문 삭제',
+    confirmChatDeleteMsg: '이 추가질문 스레드 전체가 삭제됩니다.',
     generatingAnswer: '답변 생성 중',
     errorMsg: '죄송합니다. 오류가 발생했습니다.',
     sideChatErrorMsg: '오류가 발생했습니다.',
@@ -138,6 +143,11 @@ ${mainCtx}`,
     renameTitle: 'Rename',
     deleteTitle: 'Delete',
     moveToText: 'Go to source',
+    cancelLabel: 'Cancel',
+    confirmNoteDeleteTitle: 'Delete Note',
+    confirmNoteDeleteMsg: 'The note and its linked highlight will be removed.',
+    confirmChatDeleteTitle: 'Delete Thread',
+    confirmChatDeleteMsg: 'This entire thread will be permanently deleted.',
     generatingAnswer: 'Generating response',
     errorMsg: 'Sorry, an error occurred.',
     sideChatErrorMsg: 'An error occurred.',
@@ -319,6 +329,7 @@ function MessageTextWithHighlightOverlays({
   markdownRehypePlugins,
   markdownComponents,
   scrollContainerRef,
+  markdownClassName = 'ai-markdown',
 }) {
   const msgHighlights = useMemo(
     () =>
@@ -569,7 +580,7 @@ function MessageTextWithHighlightOverlays({
         ) : isUser ? (
           <span className="whitespace-pre-wrap block">{msgText}</span>
         ) : (
-          <div className="ai-markdown">
+          <div className={markdownClassName}>
             <ReactMarkdown
               rehypePlugins={markdownRehypePlugins}
               components={markdownComponents}
@@ -596,9 +607,7 @@ function MessageTextWithHighlightOverlays({
           promptingChipsHlId  === hl.id;
         const isPulsing = promptingChipsHlId === hl.id;
 
-        const sortedLinks = [...links].sort(
-          (a, b) => (highlightIndexMap[a.id] ?? 999) - (highlightIndexMap[b.id] ?? 999)
-        );
+        const sortedLinks = [...links].sort((a, b) => a.id - b.id);
 
         return (
           <div
@@ -780,8 +789,11 @@ export default function NonLinearChatInterface() {
   const [selectionMenu, setSelectionMenu] = useState({
     visible: false, text: '', x: 0, y: 0, originY: 0,
     messageId: null, startOffset: 0, endOffset: 0,
-    parentChatId: null,
+    parentChatId: null, sideMessageId: null,
   });
+
+  /* 삭제 확인 다이얼로그 */
+  const [confirmDialog, setConfirmDialog] = useState({ visible: false, type: null, id: null });
 
   /* 드래그 (메모는 고정 크기 유지로 리사이즈 없음) */
   const [dragInfo,   setDragInfo]   = useState(null);
@@ -796,10 +808,12 @@ export default function NonLinearChatInterface() {
   const dragMoved       = useRef(false);
   const leftPanelRef    = useRef(null); // 수납 구역(좌측 패널) 외곽 래퍼
   const leftRef         = useRef(null);
-  const centerRef       = useRef(null);
-  const centerScrollRef = useRef(null);
-  const sideChatBottomRef = useRef(null);
-  const mainBottomRef   = useRef(null);
+  const centerRef          = useRef(null);
+  const centerScrollRef    = useRef(null);
+  const sideChatBottomRef  = useRef(null);
+  const sideScrollRef      = useRef(null);
+  const mainBottomRef      = useRef(null);
+  const streamingAiMsgRef  = useRef(null);
   const sidebarRef      = useRef(null);
 
   /* 세로 목차 활성 탭 돌출 바 위치 */
@@ -843,17 +857,23 @@ export default function NonLinearChatInterface() {
     return map;
   }, [orderedTree]);
 
-  /* ── highlightIndexMap: link.id → 전역 배지 번호 ── */
+  /* ── highlightIndexMap: link.id → 배지 레이블
+       메모: 생성 순 번호 "1","2"…  추가질문: treeLabelMap 계층 레이블 "1","1-1","1-2"… ── */
   const highlightIndexMap = useMemo(() => {
     const map = {};
-    let idx = 1;
+    let noteIdx = 1;
     highlights.forEach((h) => {
       (h.links || []).forEach((link) => {
-        if (!(link.id in map)) map[link.id] = idx++;
+        if (link.id in map) return;
+        if (link.type === 'note') {
+          map[link.id] = String(noteIdx++);
+        } else {
+          map[link.id] = treeLabelMap[link.id] ?? '?';
+        }
       });
     });
     return map;
-  }, [highlights]);
+  }, [highlights, treeLabelMap]);
 
   const centerTitle      = activeChat?.title?.trim() ? activeChat.title : t('chatFallbackTitle');
 
@@ -919,13 +939,19 @@ export default function NonLinearChatInterface() {
     setActiveSideChatId(null);
   };
 
-  /* ── 스크롤 자동 ── */
+  /* ── 스크롤: 최초 마운트만 기존 메시지 맨 아래로 ── */
   useEffect(() => {
-    if (!isMainLoading && mainMessages.length === 0) return;
+    if (mainMessages.length === 0) return;
+    mainBottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 스크롤: AI 응답 시작 시 해당 메시지 상단으로 이동 ── */
+  useEffect(() => {
+    if (!streamingAiMsgId) return;
     requestAnimationFrame(() => {
-      mainBottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      streamingAiMsgRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  }, [isMainLoading, mainMessages]);
+  }, [streamingAiMsgId]);
 
   /* 우측 패널 스크롤 자동 (활성 스레드 변경 or 메시지 추가) */
   useEffect(() => {
@@ -971,7 +997,7 @@ export default function NonLinearChatInterface() {
     if (!isInput) scrollToHighlight(id);
   };
 
-  /* ── 사이드챗 텍스트 선택 메뉴 (data-side-message-text-root 기준) ── */
+  /* ── 사이드챗 텍스트 선택 메뉴 (data-message-text-root 기준, 오프셋 계산) ── */
   const handleMouseUpSide = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
@@ -987,17 +1013,27 @@ export default function NonLinearChatInterface() {
     }
     const ancestor = range.commonAncestorContainer;
     const node     = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement : ancestor;
-    const textRoot = node?.closest('[data-side-message-text-root]');
+    const textRoot = node?.closest('[data-message-text-root]');
     if (!textRoot) {
       setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
       return;
     }
+    const messageRow = textRoot.closest('[data-side-message-id]');
+    if (!messageRow) {
+      setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+      return;
+    }
+    const sideMessageId  = Number(messageRow.getAttribute('data-side-message-id'));
+    const leadingSpaces  = exactText.length - exactText.trimStart().length;
+    const startRaw       = countVisibleCharsUpTo(textRoot, range.startContainer, range.startOffset);
+    const startOffset    = startRaw + leadingSpaces;
+    const endOffset      = startOffset + trimmedText.length;
     const rect = range.getBoundingClientRect();
     setSelectionMenu({
       visible: true, text: trimmedText,
       x: rect.left + rect.width / 2, y: rect.top - 10, originY: rect.top,
-      messageId: null, startOffset: 0, endOffset: 0,
-      parentChatId: activeThreadId,
+      messageId: null, startOffset, endOffset,
+      parentChatId: activeThreadId, sideMessageId,
     });
   };
 
@@ -1072,17 +1108,24 @@ export default function NonLinearChatInterface() {
     };
     setNotes((prev) => [...prev, newNote]);
 
+    // 사이드챗 선택 여부에 따라 messageId / sideChatId 결정
+    const isSideSel   = selectionMenu.sideMessageId !== null;
+    const hlMessageId = isSideSel ? selectionMenu.sideMessageId : selectionMenu.messageId;
+    const hlSideChatId = isSideSel ? selectionMenu.parentChatId : null;
+
     // 같은 구간 하이라이트에 link 추가, 없으면 새로 생성
     const existingHl =
       highlights.find(
         (h) =>
-          h.messageId   === selectionMenu.messageId &&
+          (isSideSel ? h.sideChatId === hlSideChatId : !h.sideChatId) &&
+          h.messageId   === hlMessageId &&
           h.startOffset === selectionMenu.startOffset &&
           h.endOffset   === selectionMenu.endOffset
       ) ||
       highlights.find(
         (h) =>
-          h.messageId === selectionMenu.messageId &&
+          (isSideSel ? h.sideChatId === hlSideChatId : !h.sideChatId) &&
+          h.messageId === hlMessageId &&
           h.text      === selectionMenu.text
       );
 
@@ -1099,7 +1142,8 @@ export default function NonLinearChatInterface() {
         ...prev,
         {
           id: now,
-          messageId:   selectionMenu.messageId,
+          messageId:   hlMessageId,
+          ...(hlSideChatId ? { sideChatId: hlSideChatId } : {}),
           startOffset: selectionMenu.startOffset,
           endOffset:   selectionMenu.endOffset,
           text:        selectionMenu.text,
@@ -1108,7 +1152,7 @@ export default function NonLinearChatInterface() {
       ]);
     }
 
-    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null });
+    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null, sideMessageId: null });
     window.getSelection()?.removeAllRanges();
   };
 
@@ -1131,16 +1175,23 @@ export default function NonLinearChatInterface() {
     setSideChats((prev) => [...prev, newChat]);
     setActiveSideChatId(now);
 
+    // 사이드챗 선택 여부에 따라 messageId / sideChatId 결정
+    const isSideSel    = selectionMenu.sideMessageId !== null;
+    const hlMessageId  = isSideSel ? selectionMenu.sideMessageId : selectionMenu.messageId;
+    const hlSideChatId = isSideSel ? selectionMenu.parentChatId : null;
+
     const existingHl =
       highlights.find(
         (h) =>
-          h.messageId   === selectionMenu.messageId &&
+          (isSideSel ? h.sideChatId === hlSideChatId : !h.sideChatId) &&
+          h.messageId   === hlMessageId &&
           h.startOffset === selectionMenu.startOffset &&
           h.endOffset   === selectionMenu.endOffset
       ) ||
       highlights.find(
         (h) =>
-          h.messageId === selectionMenu.messageId &&
+          (isSideSel ? h.sideChatId === hlSideChatId : !h.sideChatId) &&
+          h.messageId === hlMessageId &&
           h.text      === selectionMenu.text
       );
 
@@ -1157,7 +1208,8 @@ export default function NonLinearChatInterface() {
         ...prev,
         {
           id: now,
-          messageId:   selectionMenu.messageId,
+          messageId:   hlMessageId,
+          ...(hlSideChatId ? { sideChatId: hlSideChatId } : {}),
           startOffset: selectionMenu.startOffset,
           endOffset:   selectionMenu.endOffset,
           text:        selectionMenu.text,
@@ -1166,8 +1218,18 @@ export default function NonLinearChatInterface() {
       ]);
     }
 
-    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null });
+    setSelectionMenu({ visible: false, text: '', x: 0, y: 0, originY: 0, messageId: null, startOffset: 0, endOffset: 0, parentChatId: null, sideMessageId: null });
     window.getSelection()?.removeAllRanges();
+  };
+
+  /* ── 삭제 확인 다이얼로그 ── */
+  const askConfirmDelete = (type, id) => setConfirmDialog({ visible: true, type, id });
+  const handleCancelDelete = () => setConfirmDialog({ visible: false, type: null, id: null });
+  const handleConfirmDelete = () => {
+    const { type, id } = confirmDialog;
+    setConfirmDialog({ visible: false, type: null, id: null });
+    if (type === 'note')       removeNote(id);
+    else if (type === 'chat')  removeSideChat(id);
   };
 
   /* ── 포스트잇 삭제 (link 제거 → highlights 고아 정리) ── */
@@ -1552,7 +1614,7 @@ export default function NonLinearChatInterface() {
       }}
       onMouseUp={(e) => {
         if (e.target.closest('[data-selection-menu]')) return;
-        if (!e.target.closest('[data-message-text-root]') && !e.target.closest('[data-side-message-text-root]')) {
+        if (!e.target.closest('[data-message-text-root]')) {
           setSelectionMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
         }
       }}
@@ -1776,7 +1838,7 @@ export default function NonLinearChatInterface() {
                         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); removeNote(note.id); }}
+                        onClick={(e) => { e.stopPropagation(); askConfirmDelete('note', note.id); }}
                         onMouseDown={(e) => e.stopPropagation()}
                         className="p-1.5 hover:bg-black/5 rounded-lg text-slate-500/70 transition-colors"
                       >
@@ -1915,7 +1977,7 @@ export default function NonLinearChatInterface() {
                       {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); removeNote(note.id); }}
+                      onClick={(e) => { e.stopPropagation(); askConfirmDelete('note', note.id); }}
                       onMouseDown={(e) => e.stopPropagation()}
                       className="p-1.5 hover:bg-black/5 rounded-lg text-slate-700/70 transition-colors"
                     >
@@ -1975,8 +2037,10 @@ export default function NonLinearChatInterface() {
             return (
               <div
                 key={msg.id}
+                ref={msg.id === streamingAiMsgId ? streamingAiMsgRef : null}
                 className={`flex items-start ${isUser ? 'justify-end' : 'justify-start'} gap-3`}
                 data-message-id={msg.id}
+                style={{ scrollMarginTop: 24 }}
               >
                 {!isUser && (
                   <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 shadow-sm">
@@ -1996,7 +2060,7 @@ export default function NonLinearChatInterface() {
                       isUser={isUser}
                       msgText={msg.text || ''}
                       isStreamingSkeleton={!isUser && streamingAiMsgId === msg.id && !msg.text}
-                      highlights={highlights}
+                      highlights={highlights.filter((h) => !h.sideChatId)}
                       highlightIndexMap={highlightIndexMap}
                       scrollToPostIt={scrollToPostIt}
                       onHighlightHover={setHoveredHighlightId}
@@ -2232,7 +2296,7 @@ export default function NonLinearChatInterface() {
                     </button>
                     <button
                       className="p-0.5 rounded hover:bg-black/10 text-slate-400 hover:text-red-400 transition-colors"
-                      onClick={(e) => { e.stopPropagation(); removeSideChat(chat.id); }}
+                      onClick={(e) => { e.stopPropagation(); askConfirmDelete('chat', chat.id); }}
                       title={t('deleteTitle')}
                     >
                       <X className="w-2.5 h-2.5" />
@@ -2307,6 +2371,8 @@ export default function NonLinearChatInterface() {
 
             {/* 메시지 목록 */}
             <div
+              ref={sideScrollRef}
+              data-scroll-section={`parallel_window_${treeLabelMap[activeThread?.id] ?? String(activeThread?.id ?? '')}`}
               className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-3.5 text-left"
               onMouseUp={handleMouseUpSide}
             >
@@ -2319,31 +2385,29 @@ export default function NonLinearChatInterface() {
                     className={`flex items-start ${isU ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      data-side-message-text-root
-                      className={`max-w-[80%] text-left font-normal select-text ${
+                      className={`max-w-[80%] text-left font-normal ${
                         isU
                           ? 'bg-slate-50 text-slate-700 border border-slate-100 rounded-2xl rounded-tr-sm px-3.5 py-2 text-[12.5px] leading-[1.7] shadow-sm'
                           : 'bg-white border border-slate-100 text-slate-700 rounded-2xl rounded-tl-sm px-3.5 py-2.5 shadow-postit side-chat-markdown-wrap'
                       }`}
                     >
-                      {isU ? (
-                        <span className="whitespace-pre-wrap block">{msg.text}</span>
-                      ) : msg.text ? (
-                        <div className="side-chat-markdown">
-                          <ReactMarkdown
-                            rehypePlugins={markdownRehypePlugins}
-                            components={markdownComponents}
-                          >
-                            {msg.text}
-                          </ReactMarkdown>
-                        </div>
-                      ) : (
-                        <span className="inline-flex gap-1">
-                          <span className="typing-dot" />
-                          <span className="typing-dot" />
-                          <span className="typing-dot" />
-                        </span>
-                      )}
+                      <MessageTextWithHighlightOverlays
+                        messageId={msg.id}
+                        isUser={isU}
+                        msgText={msg.text || ''}
+                        isStreamingSkeleton={!isU && !msg.text}
+                        highlights={highlights.filter((h) => h.sideChatId === activeThread.id)}
+                        highlightIndexMap={highlightIndexMap}
+                        scrollToPostIt={scrollToPostIt}
+                        onHighlightHover={setHoveredHighlightId}
+                        onHighlightLeave={() => setHoveredHighlightId(null)}
+                        flashingHighlightId={flashingHighlightId}
+                        hoveredPostItId={hoveredPostItId}
+                        markdownRehypePlugins={markdownRehypePlugins}
+                        markdownComponents={markdownComponents}
+                        scrollContainerRef={sideScrollRef}
+                        markdownClassName="side-chat-markdown"
+                      />
                     </div>
                   </div>
                 );
@@ -2432,6 +2496,94 @@ export default function NonLinearChatInterface() {
             <MessageSquarePlus className="w-4 h-4 text-cyan-300" />
             <span>{t('deepDiveButton')}</span>
           </button>
+        </div>,
+        document.body
+      )}
+
+      {/* ── 삭제 확인 다이얼로그 ── */}
+      {confirmDialog.visible && createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(15,23,42,0.32)',
+            backdropFilter: 'blur(2px)',
+          }}
+          onMouseDown={handleCancelDelete}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 16,
+              boxShadow: '0 8px 32px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.10)',
+              padding: '24px 28px 20px',
+              minWidth: 300,
+              maxWidth: 380,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <p style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              color: '#0f172a',
+              whiteSpace: 'nowrap',
+            }}>
+              {confirmDialog.type === 'note' ? t('confirmNoteDeleteTitle') : t('confirmChatDeleteTitle')}
+            </p>
+            <p style={{
+              margin: 0,
+              fontSize: 13,
+              color: '#64748b',
+              whiteSpace: 'nowrap',
+              marginBottom: 6,
+            }}>
+              {confirmDialog.type === 'note' ? t('confirmNoteDeleteMsg') : t('confirmChatDeleteMsg')}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button
+                onClick={handleCancelDelete}
+                style={{
+                  padding: '7px 16px',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
+                  background: '#f8fafc',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f8fafc')}
+              >
+                {t('cancelLabel')}
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                style={{
+                  padding: '7px 16px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  background: '#fef2f2',
+                  color: '#dc2626',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#fef2f2')}
+              >
+                {t('deleteTitle')}
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}
