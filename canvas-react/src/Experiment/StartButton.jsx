@@ -30,6 +30,14 @@ function msToSec(ms) {
   return ms > 0 ? Math.round(ms / 10) / 100 : 0;
 }
 
+/** YYMMDD 형식 날짜 문자열 (예: 260523) */
+function formatLogDate(date = new Date()) {
+  const yy = String(date.getFullYear()).slice(-2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * computeMetrics(logs, interfaceType): 로그 배열 → 지표 1~5 요약 객체
  *
@@ -128,6 +136,18 @@ function computeMetrics(logs, interfaceType) {
   const activeDurMs = aiWaitMs + mouseDurMs + scrollDurMs + typingDurMs + dragDurMs;
   const idleMs      = Math.max(0, totalMs - activeDurMs);
 
+  /* ── AI 답변 총 높이 집계 ── */
+  const sectionHeightMap = {};
+  for (const entry of logs) {
+    if (entry.eventType === 'AI_ANSWER_HEIGHT_SNAPSHOT') {
+      const { section, answerHeightPx } = entry.details ?? {};
+      if (section != null && answerHeightPx != null) {
+        sectionHeightMap[section] = answerHeightPx; // 마지막 값으로 덮어쓰기
+      }
+    }
+  }
+  const aiAnswerTotalHeightPx = Object.values(sectionHeightMap).reduce((s, v) => s + v, 0);
+
   return {
     scrollDistPx, scrollDurSec: msToSec(scrollDurMs),
     mouseDistPx,  mouseDurSec:  msToSec(mouseDurMs),
@@ -135,6 +155,7 @@ function computeMetrics(logs, interfaceType) {
     m3Count, m3DurSec, m3Efficiency,
     interactions,
     idleSec: msToSec(idleMs),
+    aiAnswerTotalHeightPx,
   };
 }
 
@@ -147,6 +168,7 @@ const SUMMARY_HEADER = [
   'User ID', 'Interface',
   '지표1: 스크롤 거리(px)', '지표1: 스크롤 시간(초)',
   '지표1: 마우스 거리(px)', '지표1: 마우스 시간(초)',
+  '지표1: AI 답변 총 높이(px)',
   '지표2: 문맥 전환(회)',
   '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
   '지표4: 상호작용(회)',
@@ -164,6 +186,7 @@ function metricsToCells(userId, ifaceType, m) {
     userId, ifaceType,
     m.scrollDistPx, m.scrollDurSec,
     m.mouseDistPx,  m.mouseDurSec,
+    m.aiAnswerTotalHeightPx,
     m.contextSwitches,
     m.m3Count, m.m3DurSec, m.m3Efficiency,
     m.interactions,
@@ -256,7 +279,7 @@ function downloadWorkbook(wb, fileName) {
 /* ═════════════════════════════════════════════════════════════════════════════
  * 컴포넌트
  * ═════════════════════════════════════════════════════════════════════════════ */
-export default function StartButton() {
+export default function StartButton({ onBeforeEndBlock }) {
   const {
     isExperimentActive, setIsExperimentActive,
     userId,
@@ -269,10 +292,11 @@ export default function StartButton() {
 
   /* ── 첫 번째(또는 중간) 블록 종료 → 로그 보존 후 대기 ── */
   const handleEndBlock = useCallback(() => {
+    onBeforeEndBlock?.();       /* AI 답변 높이 스냅샷 등 블록 종료 전 처리 */
     archiveLogs();              /* logs → archivedLogs 스냅샷, logs 초기화 */
     setIsExperimentActive(false);
     setExperimentPhase('ended');
-  }, [archiveLogs, setIsExperimentActive, setExperimentPhase]);
+  }, [onBeforeEndBlock, archiveLogs, setIsExperimentActive, setExperimentPhase]);
 
   /* ── 다음 블록 시작 ── */
   const handleStartNext = useCallback(() => {
@@ -295,8 +319,9 @@ export default function StartButton() {
       .filter((a) => a.interfaceType === 'proposed')
       .flatMap((a) => a.logs);
 
-    const wb = buildWorkbook(userId || 'user', traditionalLogs, proposedLogs);
-    downloadWorkbook(wb, `HCI_Experiment_Result_${userId || 'user'}.xlsx`);
+    const exportUserId = userId || 'user';
+    const wb = buildWorkbook(exportUserId, traditionalLogs, proposedLogs);
+    downloadWorkbook(wb, `${formatLogDate()}_${exportUserId}_log.xlsx`);
 
     clearLogs();
     setIsExperimentActive(false);

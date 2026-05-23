@@ -68,7 +68,7 @@ function makeInitialChat(id = 1) {
 export default function TraditionalChat() {
   const navigate   = useNavigate();
   const { userId, apiKey, blockIndex } = useExperiment();
-  const { logPromptSubmitTraditional, startAIWait, stopAIWait } = useExperimentLog();
+  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
   const [chatHistory,  setChatHistory]  = useState(() => {
@@ -94,6 +94,20 @@ export default function TraditionalChat() {
   const scrollRef  = useRef(null);
   const inputRef   = useRef(null);
   const msgCounter = useRef((activeChat?.messages?.at(-1)?.id ?? 1) + 1);
+
+  /* ── 블록 종료 직전 AI 답변 높이 스냅샷 ── */
+  const saveAiAnswerHeight = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const aiRows = container.querySelectorAll('[data-msg-role="ai"]');
+    const answerHeightPx = Array.from(aiRows).reduce((sum, el) => sum + el.offsetHeight, 0);
+    logAiAnswerHeightSnapshot({
+      trigger:        'block_end',
+      section:        'main_canvas',
+      answerHeightPx,
+      answerCount:    aiRows.length,
+    });
+  }, [logAiAnswerHeightSnapshot]);
 
   /* ── conversationHistory: 활성 채팅 기준 메모리 참조 ── */
   const conversationHistory = useRef(activeChat?.history ?? []);
@@ -396,95 +410,86 @@ export default function TraditionalChat() {
           </button>
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
-          <StartButton />
+          <StartButton onBeforeEndBlock={saveAiAnswerHeight} />
         </div>
 
         {/* ── 메시지 목록 ── */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-6">
-          {messages.map((msg) => {
-            const isUser           = msg.sender === 'user';
-            const isLoadingSkeleton = !isUser && streamingMsgId === msg.id && !msg.text;
+        <div ref={scrollRef} className="flex-1 overflow-y-auto py-8 space-y-6">
+          <div className="max-w-[760px] mx-auto w-full px-6 space-y-6">
+            {messages.map((msg) => {
+              const isUser            = msg.sender === 'user';
+              const isLoadingSkeleton = !isUser && streamingMsgId === msg.id && !msg.text;
 
-            return (
-              <div
-                key={msg.id}
-                className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
-              >
-                {!isUser && (
-                  <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                )}
+              return (
+                <div
+                  key={msg.id}
+                  data-msg-role={isUser ? 'user' : 'ai'}
+                  className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                >
+                  {!isUser && (
+                    <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                      <Bot className="w-4 h-4 text-white" />
+                    </div>
+                  )}
 
-                <div className={`min-w-0 ${isUser ? 'max-w-[85%]' : 'max-w-[88%]'}`}>
-                  <div className={`text-[11px] font-semibold mb-1.5 ${isUser ? 'text-right text-slate-400' : 'text-slate-400'}`}>
-                    {isUser ? userId : 'AI'}
-                  </div>
-                  <div
-                    className={
-                      isUser
-                        ? 'whitespace-pre-wrap text-[14px] font-medium leading-relaxed bg-slate-100 text-slate-800 border border-slate-200/70 rounded-2xl rounded-tr-md px-5 py-3 shadow-sm text-left'
-                        : 'trad-ai-bubble text-[14px] font-medium bg-white text-slate-800 border border-slate-200/70 rounded-2xl rounded-tl-md px-6 py-4 shadow-sm'
-                    }
-                  >
-                    {isLoadingSkeleton ? (
-                      <span className="flex items-center gap-1.5 h-5">
-                        <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
-                      </span>
-                    ) : isUser ? (
-                      msg.text
-                    ) : (
-                      <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text || ''}</ReactMarkdown>
-                    )}
+                  <div className={`min-w-0 ${isUser ? 'max-w-[88%]' : 'max-w-[92%]'}`}>
+                    <div
+                      className={
+                        isUser
+                          ? 'whitespace-pre-wrap text-[14px] font-medium leading-relaxed bg-slate-100 text-slate-800 border border-slate-200/70 rounded-2xl rounded-tr-md px-5 py-3 shadow-sm text-left'
+                          : 'trad-ai-bubble text-[14px] font-medium bg-white text-slate-800 border border-slate-200/70 rounded-2xl rounded-tl-md px-6 py-4 shadow-sm'
+                      }
+                    >
+                      {isLoadingSkeleton ? (
+                        <span className="flex items-center gap-1.5 h-5">
+                          <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+                        </span>
+                      ) : isUser ? (
+                        msg.text
+                      ) : (
+                        <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text || ''}</ReactMarkdown>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                {isUser && (
-                  <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                    <span className="text-[11px] font-bold text-slate-600">
-                      {userId.slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           <div style={{ height: 4 }} />
         </div>
 
         {/* ── 입력창 ── */}
-        <div className="shrink-0 px-6 pb-6 pt-3 bg-white border-t border-slate-200/60">
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="flex items-end gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 shadow-sm focus-within:border-slate-300 focus-within:shadow-md transition-all"
-          >
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="메시지를 입력하세요… (Shift+Enter로 줄바꿈)"
-              rows={1}
-              className="flex-1 resize-none bg-transparent text-[14px] text-slate-800 placeholder-slate-400 outline-none leading-relaxed"
-              style={{ minHeight: 24, maxHeight: 160, overflowY: 'auto', fontFamily: FONT_STACK_KO }}
-              onInput={(e) => {
-                e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
-              }}
-              disabled={isStreaming}
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isStreaming}
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: inputText.trim() && !isStreaming ? '#0f172a' : '#e2e8f0' }}
+        <div className="shrink-0 py-4 bg-white border-t border-slate-200/60">
+          <div className="max-w-[760px] mx-auto w-full px-6">
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+              className="flex items-end gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 shadow-sm focus-within:border-slate-300 focus-within:shadow-md transition-all"
             >
-              <Send className={`w-4 h-4 ${inputText.trim() && !isStreaming ? 'text-white' : 'text-slate-400'}`} />
-            </button>
-          </form>
-          <p className="text-center text-[11px] text-slate-300 mt-2">
-            Enter로 전송 · Shift+Enter로 줄바꿈
-          </p>
+              <textarea
+                ref={inputRef}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="메시지를 입력하세요…"
+                rows={1}
+                className="flex-1 resize-none bg-transparent text-[14px] text-slate-800 placeholder-slate-400 outline-none leading-relaxed"
+                style={{ minHeight: 24, maxHeight: 160, overflowY: 'auto', fontFamily: FONT_STACK_KO }}
+                onInput={(e) => {
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                }}
+                disabled={isStreaming}
+              />
+              <button
+                type="submit"
+                disabled={!inputText.trim() || isStreaming}
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: inputText.trim() && !isStreaming ? '#0f172a' : '#e2e8f0' }}
+              >
+                <Send className={`w-4 h-4 ${inputText.trim() && !isStreaming ? 'text-white' : 'text-slate-400'}`} />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
