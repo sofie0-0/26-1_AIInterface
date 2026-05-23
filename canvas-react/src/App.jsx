@@ -1418,6 +1418,7 @@ export default function NonLinearChatInterface() {
       x: rect.left + rect.width / 2, y: rect.top - 10, originY: rect.top,
       messageId, startOffset, endOffset,
       parentChatId: null,
+      sideMessageId: null,
     });
   };
 
