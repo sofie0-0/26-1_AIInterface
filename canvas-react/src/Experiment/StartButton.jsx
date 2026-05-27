@@ -172,7 +172,6 @@ const SUMMARY_HEADER = [
   '지표2: 문맥 전환(회)',
   '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
   '지표4: 상호작용(회)',
-  '지표5: 유휴 시간(초)',
 ];
 
 const RAW_HEADER = [
@@ -190,7 +189,6 @@ function metricsToCells(userId, ifaceType, m) {
     m.contextSwitches,
     m.m3Count, m.m3DurSec, m.m3Efficiency,
     m.interactions,
-    m.idleSec,
   ];
 }
 

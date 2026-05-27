@@ -547,12 +547,14 @@ export function ExperimentLogProvider({ children }) {
    * [실험 종료] 버튼 클릭 시 호출 → 데이터 유실 없이 다음 블록 준비.
    */
   const archiveLogs = useCallback(() => {
-    setArchivedLogs((prev) => [
-      ...prev,
-      { interfaceType, logs },
-    ]);
-    setLogs([]);
-  }, [interfaceType, logs]);
+    setLogs((currentLogs) => {
+      setArchivedLogs((prev) => [
+        ...prev,
+        { interfaceType, logs: currentLogs },
+      ]);
+      return [];
+    });
+  }, [interfaceType]);
 
   /** 전체 로그(현재 + 아카이브) 완전 초기화 */
   const clearLogs = useCallback(() => {
