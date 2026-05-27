@@ -16,6 +16,7 @@ import {
   ChevronRight,
   MoveUpRight,
   GripHorizontal,
+  GripVertical,
   Menu,
   MessageSquare,
   MessageSquarePlus,
@@ -1073,6 +1074,40 @@ export default function NonLinearChatInterface() {
   /* 우측 패널: 활성 스레드 ID (null = 첫 번째 자동 선택) */
   const [activeSideChatId, setActiveSideChatId] = useState(null);
 
+  /* ── 패널 리사이즈 state ── */
+  const [rightPanelW, setRightPanelW] = useState(LAYOUT.RIGHT_PANEL_W);
+
+  /* ── 목차 헤더 드래그 → 우측 패널 너비 조정 ──
+   * TOC 헤더를 왼쪽으로 드래그 → 우측 패널 넓어짐 / 중앙 채팅창 좁아짐
+   * TOC 헤더를 오른쪽으로 드래그 → 우측 패널 좁아짐 / 중앙 채팅창 넓어짐
+   * min: LAYOUT.RIGHT_PANEL_MIN_W(280px) ─────────────────────────────────── */
+  const tocDragRef = useRef({ dragging: false, startX: 0, startW: 0 });
+  const [isTocDragging, setIsTocDragging] = useState(false);
+
+  const handleTocHeaderMouseDown = useCallback((e) => {
+    e.preventDefault();
+    tocDragRef.current = { dragging: true, startX: e.clientX, startW: rightPanelW };
+    setIsTocDragging(true);
+
+    const onMouseMove = (e) => {
+      if (!tocDragRef.current.dragging) return;
+      const dx = e.clientX - tocDragRef.current.startX;
+      // 왼쪽으로 드래그(dx < 0) → 우측 패널 넓어짐
+      const nextW = Math.max(LAYOUT.RIGHT_PANEL_MIN_W, tocDragRef.current.startW - dx);
+      requestAnimationFrame(() => setRightPanelW(nextW));
+    };
+
+    const onMouseUp = () => {
+      tocDragRef.current.dragging = false;
+      setIsTocDragging(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup',   onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup',   onMouseUp);
+  }, []); // startW는 마우스다운 시 ref에 복사하므로 rightPanelW 클로저 불필요
+
   /* ── Refs ── */
   const postItRefs      = useRef({});
   const dragMoved       = useRef(false);
@@ -1209,7 +1244,7 @@ export default function NonLinearChatInterface() {
     const tr = tabEl.getBoundingClientRect();
     const sr = sidebarRef.current.getBoundingClientRect();
     setProtrBarInfo({ sidebarLeft: sr.left, top: tr.top, height: tr.height });
-  }, [activeThreadId, orderedTree]);
+  }, [activeThreadId, orderedTree, rightPanelW]);
 
   /* ── 채팅 히스토리 동기화 ── */
   useEffect(() => {
@@ -2076,8 +2111,8 @@ export default function NonLinearChatInterface() {
         data-scroll-section="notes_panel"
         className="relative h-full overflow-hidden border-r border-slate-200 bg-white"
         style={{
-          width:     LAYOUT.LEFT_NOTES_W,
-          minWidth:  LAYOUT.LEFT_NOTES_MIN_W,
+          width:      LAYOUT.LEFT_NOTES_W,
+          minWidth:   LAYOUT.LEFT_NOTES_MIN_W,
           flexShrink: 0,
           flexGrow:   0,
         }}
@@ -2509,17 +2544,35 @@ export default function NonLinearChatInterface() {
             borderRight: '1px solid #c8d3e0',
           }}
         >
-          {/* 헤더 */}
+          {/* 헤더 — 드래그 핸들 */}
           <div
-            className="shrink-0 px-3 pt-3 pb-2 border-b border-[#c8d3e0] sticky top-0 z-20"
-            style={{ background: '#dce3ed' }}
+            onMouseDown={handleTocHeaderMouseDown}
+            title="드래그하여 패널 너비 조정"
+            className="shrink-0 px-2 pt-3 pb-2 border-b border-[#c8d3e0] sticky top-0 z-20 select-none group relative"
+            style={{
+              background: isTocDragging ? '#c8d8ea' : '#dce3ed',
+              cursor: 'col-resize',
+              transition: 'background 0.15s',
+            }}
           >
+            {/* 아이콘 + 레이블 — 한 행 */}
             <div className="flex items-center gap-1.5">
+              <GripVertical
+                className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 transition-colors"
+                style={{ opacity: isTocDragging ? 1 : 0.6 }}
+              />
               <MessageSquarePlus className="w-3 h-3 text-cyan-500 shrink-0" />
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                 {t('deepDivePanelHeader')}
               </span>
             </div>
+            {/* 드래그 중 강조 선 */}
+            {isTocDragging && (
+              <div
+                className="absolute inset-y-0 left-0 w-0.5 bg-blue-400"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
           </div>
 
           {/* 빈 상태: 고스트 미리보기 */}
@@ -2704,10 +2757,11 @@ export default function NonLinearChatInterface() {
       <div
         className="relative flex flex-col h-full border-l border-slate-200 bg-white"
         style={{
-          width:     LAYOUT.RIGHT_PANEL_W,
+          width:     rightPanelW,
           minWidth:  LAYOUT.RIGHT_PANEL_MIN_W,
           flexShrink: 0,
           flexGrow:   0,
+          transition: isTocDragging ? 'none' : 'width 0.15s ease',
         }}
       >
         <PaperOverlay />
