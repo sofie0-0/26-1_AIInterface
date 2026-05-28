@@ -24,6 +24,7 @@ import {
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { useNavigate } from 'react-router-dom';
 import { useExperiment } from './ExperimentContext.jsx';
 import { useExperimentLog } from './ExperimentLogContext.jsx';
@@ -447,7 +448,7 @@ export default function TraditionalChat() {
                       ) : isUser ? (
                         msg.text
                       ) : (
-                        <ReactMarkdown rehypePlugins={[rehypeRaw]}>{msg.text || ''}</ReactMarkdown>
+                        <ReactMarkdown rehypePlugins={[rehypeRaw, [rehypeSanitize, defaultSchema]]}>{msg.text || ''}</ReactMarkdown>
                       )}
                     </div>
                   </div>

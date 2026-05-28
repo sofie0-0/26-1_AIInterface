@@ -31,6 +31,7 @@ import { createPortal } from 'react-dom';
 import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { motion } from 'framer-motion';
 
 /* ─────────────────── 상수 ─────────────────── */
@@ -1125,7 +1126,7 @@ export default function NonLinearChatInterface() {
   const [protrBarInfo, setProtrBarInfo] = useState(null);
 
   /* ── Markdown 플러그인 (메모화) ── */
-  const markdownRehypePlugins = useMemo(() => [rehypeRaw], []);
+  const markdownRehypePlugins = useMemo(() => [rehypeRaw, [rehypeSanitize, defaultSchema]], []);
   const markdownComponents    = useMemo(() => ({}), []);
 
   /* ── 계층 트리: sideChats → depth 부여 DFS 정렬 ── */
