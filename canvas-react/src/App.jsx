@@ -52,6 +52,8 @@ import { clamp, truncateTitle } from './utils/textUtils.js';
 import { countVisibleCharsUpTo, migrateHighlights } from './utils/highlightUtils.js';
 import MessageTextWithHighlightOverlays from './components/MessageText.jsx';
 import AuthGate from './components/AuthGate.jsx';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 
 /* ─────────────────── 메인 컴포넌트 ─────────────────── */
 export default function NonLinearChatInterface() {
