@@ -17,7 +17,6 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback } from 'react';
-import * as XLSX from 'xlsx';
 import { useExperiment } from './ExperimentContext';
 import { useExperimentLog } from './ExperimentLogContext';
 
@@ -205,14 +204,14 @@ function logsToRows(logs) {
 }
 
 /**
- * buildWorkbook(userId, traditionalLogs, proposedLogs)
+ * buildWorkbook(XLSX, userId, traditionalLogs, proposedLogs)
  *
  * 시트 1: Summary Dashboard  — Traditional / Proposed 지표를 나란히 비교
  * 시트 2: Traditional_Raw_Logs — 상단 요약 + 원시 로그
  * 시트 3: Proposed_Raw_Logs    — 상단 요약 + 원시 로그
  * (로그가 없는 시트도 빈 상태로 생성하여 구조 일관성 유지)
  */
-function buildWorkbook(userId, traditionalLogs, proposedLogs) {
+function buildWorkbook(XLSX, userId, traditionalLogs, proposedLogs) {
   const wb = XLSX.utils.book_new();
 
   const tradM = computeMetrics(traditionalLogs, 'traditional');
@@ -261,7 +260,7 @@ function setColWidths(ws, colCount) {
 }
 
 /** Workbook → .xlsx Blob 다운로드 */
-function downloadWorkbook(wb, fileName) {
+function downloadWorkbook(XLSX, wb, fileName) {
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob  = new Blob([wbout], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -303,7 +302,9 @@ export default function StartButton({ onBeforeEndBlock }) {
   }, [setIsExperimentActive, setExperimentPhase]);
 
   /* ── 전체 종료 및 엑셀 다운로드 ── */
-  const handleFinalExport = useCallback(() => {
+  const handleFinalExport = useCallback(async () => {
+    const XLSX = await import('xlsx');
+
     /* archivedLogs + 현재 미아카이브 로그를 모두 합산 */
     const allArchived = logs.length > 0
       ? [...archivedLogs, { interfaceType: logs[0]?.interfaceType ?? 'unknown', logs }]
@@ -318,8 +319,8 @@ export default function StartButton({ onBeforeEndBlock }) {
       .flatMap((a) => a.logs);
 
     const exportUserId = userId || 'user';
-    const wb = buildWorkbook(exportUserId, traditionalLogs, proposedLogs);
-    downloadWorkbook(wb, `${formatLogDate()}_${exportUserId}_log.xlsx`);
+    const wb = buildWorkbook(XLSX, exportUserId, traditionalLogs, proposedLogs);
+    downloadWorkbook(XLSX, wb, `${formatLogDate()}_${exportUserId}_log.xlsx`);
 
     clearLogs();
     setIsExperimentActive(false);
