@@ -71,6 +71,43 @@ const FONT_STACK_EN = '"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Robot
 const STORAGE_KEY_HISTORY   = 'hci-proto-history';
 const STORAGE_KEY_ACTIVE_ID = 'hci-proto-active-id';
 
+/* ─────────────────── API 재시도 헬퍼 ───────────────────
+ * 503/500/429(과부하·일시오류)는 재시도로 해결되는 경우가 많다.
+ * 1차 실패 → 1초 대기 후 재시도 → 2차 실패 → 2초 대기 후 재시도 → 포기
+ * ─────────────────────────────────────────────────────── */
+const RETRY_DELAYS = [1000, 2000];
+
+function isRetryableError(err) {
+  const msg    = (err?.message ?? '').toLowerCase();
+  const status = err?.status ?? err?.httpError?.statusCode;
+  return (
+    status === 503 || status === 500 || status === 429 ||
+    msg.includes('503') || msg.includes('500') || msg.includes('429') ||
+    msg.includes('overload') || msg.includes('unavailable') ||
+    msg.includes('failed to fetch') || msg.includes('network')
+  );
+}
+
+async function callStreamWithRetry(streamFn, onChunk) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      const stream = await streamFn();
+      let full = '';
+      for await (const chunk of stream) {
+        full += chunk.text ?? '';
+        onChunk(full);
+      }
+      return full;
+    } catch (err) {
+      const isLast     = attempt === RETRY_DELAYS.length;
+      const retryable  = isRetryableError(err);
+      console.error(`[Gemini API] 시도 ${attempt + 1} 실패 (retryable=${retryable}):`, err);
+      if (isLast || !retryable) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
+
 /* ─────────────────── 다국어 번역 ─────────────────── */
 const translations = {
   ko: {
@@ -98,8 +135,8 @@ const translations = {
     confirmChatDeleteTitle: '추가질문 삭제',
     confirmChatDeleteMsg: '이 추가질문 스레드 전체가 삭제됩니다.',
     generatingAnswer: '답변 생성 중',
-    errorMsg: '죄송합니다. 오류가 발생했습니다.',
-    sideChatErrorMsg: '오류가 발생했습니다.',
+    errorMsg: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.',
+    sideChatErrorMsg: '서버가 혼잡합니다. 다시 시도해 주세요.',
     selectThreadHint: '좌측 목차에서 질문을 선택하세요',
     sourceRefShort: '참조',
     tocGuide: '생성된 여러 대화들을\n한눈에 파악하고 계층적으로\n관리하세요.',
@@ -155,8 +192,8 @@ ${mainCtx}`,
     confirmChatDeleteTitle: 'Delete Thread',
     confirmChatDeleteMsg: 'This entire thread will be permanently deleted.',
     generatingAnswer: 'Generating response',
-    errorMsg: 'Sorry, an error occurred.',
-    sideChatErrorMsg: 'An error occurred.',
+    errorMsg: 'The server is busy. Please try again in a moment.',
+    sideChatErrorMsg: 'Server busy. Please try again.',
     selectThreadHint: 'Select a conversation from the index',
     sourceRefShort: 'Ref',
     tocGuide: 'Track all threads\nat a glance and manage\nthem hierarchically.',
@@ -1677,22 +1714,21 @@ export default function NonLinearChatInterface() {
       if (!ai) throw new Error('API 키 없음');
       const sysInstr = translations[currentLang].systemInstruction;
       const sysAck   = translations[currentLang].sideChatAck;
-      const stream = await ai.models.generateContentStream({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user',  parts: [{ text: sysInstr }] },
-          { role: 'model', parts: [{ text: sysAck }] },
-          { role: 'user',  parts: [{ text }] },
-        ],
-      });
-      let full = '';
-      for await (const chunk of stream) {
-        full += chunk.text ?? '';
-        setMainMessages((prev) =>
+      await callStreamWithRetry(
+        () => ai.models.generateContentStream({
+          model: GEMINI_MODEL,
+          contents: [
+            { role: 'user',  parts: [{ text: sysInstr }] },
+            { role: 'model', parts: [{ text: sysAck }] },
+            { role: 'user',  parts: [{ text }] },
+          ],
+        }),
+        (full) => setMainMessages((prev) =>
           prev.map((m) => (m.id === aiMsgId ? { ...m, text: full } : m))
-        );
-      }
+        ),
+      );
     } catch (err) {
+      console.error('[메인채팅 오류]', err);
       setMainMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId ? { ...m, text: translations[currentLang].errorMsg } : m
@@ -1757,23 +1793,24 @@ export default function NonLinearChatInterface() {
         ...conversationHistory,
       ];
 
-      const chatSession = ai.chats.create({
-        model: GEMINI_MODEL,
-        history: fullHistory,
-      });
-      const stream = await chatSession.sendMessageStream({ message: text });
-      let full = '';
-      for await (const chunk of stream) {
-        full += chunk.text ?? '';
-        setSideChats((prev) =>
+      await callStreamWithRetry(
+        () => {
+          const chatSession = ai.chats.create({
+            model: GEMINI_MODEL,
+            history: fullHistory,
+          });
+          return chatSession.sendMessageStream({ message: text });
+        },
+        (full) => setSideChats((prev) =>
           prev.map((c) =>
             c.id === chatId
               ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
               : c
           )
-        );
-      }
+        ),
+      );
     } catch (err) {
+      console.error('[사이드채팅 오류]', err);
       setSideChats((prev) =>
         prev.map((c) =>
           c.id === chatId
@@ -1830,21 +1867,18 @@ export default function NonLinearChatInterface() {
         ...rawHistory,
       ];
 
-      const noteStream = await ai.models.generateContentStream({
-        model: GEMINI_MODEL, contents,
-      });
-      let full = '';
-      for await (const chunk of noteStream) {
-        full += chunk.text ?? '';
-        setNotes((prev) =>
+      await callStreamWithRetry(
+        () => ai.models.generateContentStream({ model: GEMINI_MODEL, contents }),
+        (full) => setNotes((prev) =>
           prev.map((n) =>
             n.id === noteId
               ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
               : n
           )
-        );
-      }
+        ),
+      );
     } catch (err) {
+      console.error('[노트채팅 오류]', err);
       setNotes((prev) =>
         prev.map((n) =>
           n.id === noteId

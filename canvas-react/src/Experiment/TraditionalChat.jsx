@@ -37,6 +37,40 @@ const FONT_STACK_KO      = '"Pretendard","Inter",-apple-system,BlinkMacSystemFon
 const SIDEBAR_W          = 280;
 const INIT_MSG           = '안녕하세요! 무엇이든 질문해 주세요. 성심껏 답변해 드리겠습니다.';
 
+/* ── API 재시도 헬퍼 ── */
+const RETRY_DELAYS = [1000, 2000];
+
+function isRetryableError(err) {
+  const msg    = (err?.message ?? '').toLowerCase();
+  const status = err?.status ?? err?.httpError?.statusCode;
+  return (
+    status === 503 || status === 500 || status === 429 ||
+    msg.includes('503') || msg.includes('500') || msg.includes('429') ||
+    msg.includes('overload') || msg.includes('unavailable') ||
+    msg.includes('failed to fetch') || msg.includes('network')
+  );
+}
+
+async function callStreamWithRetry(streamFn, onChunk) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      const stream = await streamFn();
+      let full = '';
+      for await (const chunk of stream) {
+        full += chunk.text ?? '';
+        onChunk(full);
+      }
+      return full;
+    } catch (err) {
+      const isLast    = attempt === RETRY_DELAYS.length;
+      const retryable = isRetryableError(err);
+      console.error(`[Gemini API] 시도 ${attempt + 1} 실패 (retryable=${retryable}):`, err);
+      if (isLast || !retryable) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
+
 /* ── sessionStorage 헬퍼 ── */
 function makeStorageKey(userId, blockIndex) {
   return `trad-chat-history-${userId}-block${blockIndex}`;
@@ -248,26 +282,25 @@ export default function TraditionalChat() {
         ...conversationHistory.current.slice(0, -1),
       ];
 
-      const chatSession = ai.chats.create({ model: GEMINI_MODEL, history: fullHistory });
-      const stream = await chatSession.sendMessageStream({ message: text });
-
-      let fullText = '';
-      for await (const chunk of stream) {
-        fullText += chunk.text ?? '';
-        setMessages((prev) =>
-          prev.map((m) => (m.id === aiMsgId ? { ...m, text: fullText } : m))
-        );
-      }
+      const fullText = await callStreamWithRetry(
+        () => {
+          const chatSession = ai.chats.create({ model: GEMINI_MODEL, history: fullHistory });
+          return chatSession.sendMessageStream({ message: text });
+        },
+        (partial) => setMessages((prev) =>
+          prev.map((m) => (m.id === aiMsgId ? { ...m, text: partial } : m))
+        ),
+      );
 
       conversationHistory.current = [
         ...conversationHistory.current,
         { role: 'model', parts: [{ text: fullText }] },
       ];
     } catch (err) {
-      console.error('AI 오류:', err);
+      console.error('[TraditionalChat 오류]', err);
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId ? { ...m, text: '죄송합니다. 오류가 발생했습니다.' } : m
+          m.id === aiMsgId ? { ...m, text: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.' } : m
         )
       );
     } finally {
