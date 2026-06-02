@@ -126,8 +126,9 @@ export default function TraditionalChat() {
   const [streamingMsgId,  setStreamingMsgId]  = useState(null);
   const [isSidebarOpen,   setIsSidebarOpen]   = useState(false);
 
-  const scrollRef  = useRef(null);
-  const inputRef   = useRef(null);
+  const scrollRef         = useRef(null);
+  const inputRef          = useRef(null);
+  const streamingAiMsgRef = useRef(null);
   const msgCounter = useRef((activeChat?.messages?.at(-1)?.id ?? 1) + 1);
 
   /* ── 블록 종료 직전 AI 답변 높이 스냅샷 ── */
@@ -153,11 +154,19 @@ export default function TraditionalChat() {
     return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
   }, [apiKey]);
 
-  /* ── 스크롤 자동 하단 이동 ── */
+  /* ── 스크롤: 최초 마운트 시에만 기존 메시지 맨 아래로 ── */
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── 스크롤: AI 응답 시작 시 해당 메시지 상단으로 한 번만 이동 ── */
+  useEffect(() => {
+    if (!streamingMsgId) return;
+    requestAnimationFrame(() => {
+      streamingAiMsgRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [streamingMsgId]);
 
   /* ── chatHistory → sessionStorage 동기화 ── */
   useEffect(() => {
@@ -457,8 +466,10 @@ export default function TraditionalChat() {
               return (
                 <div
                   key={msg.id}
+                  ref={msg.id === streamingMsgId ? streamingAiMsgRef : null}
                   data-msg-role={isUser ? 'user' : 'ai'}
                   className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                  style={{ scrollMarginTop: 24 }}
                 >
                   {!isUser && (
                     <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0 shadow-sm mt-0.5">
