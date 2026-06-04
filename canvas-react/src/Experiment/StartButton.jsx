@@ -59,6 +59,15 @@ function computeMetrics(logs, interfaceType) {
   let interactions = 0;
   let aiWaitMs = 0, typingDurMs = 0, dragDurMs = 0;
 
+  /* Proposed 기능별 사용 횟수 */
+  let cntParallelWindowCreate    = 0;
+  let cntMemoCreate              = 0;
+  let cntMemoEdit                = 0;
+  let cntMemoDelete              = 0;
+  let cntMapsToBody              = 0;
+  let cntMemoDragDrop            = 0;
+  let cntParallelWindowReactivate = 0;
+
   const timestamps = logs
     .map((e) => new Date(e.timestamp).getTime())
     .filter((t) => !isNaN(t));
@@ -89,7 +98,7 @@ function computeMetrics(logs, interfaceType) {
         if (isProposed) { m3Count += 1; interactions += 1; }
         break;
       case 'PARALLEL_WINDOW_REACTIVATE':
-        if (isProposed) { m3Count += 1; interactions += 1; }
+        if (isProposed) { m3Count += 1; interactions += 1; cntParallelWindowReactivate += 1; }
         break;
       case 'ELEMENT_INTERACTION':
         if (isProposed) {
@@ -111,16 +120,26 @@ function computeMetrics(logs, interfaceType) {
         if (isProposed) interactions += 1;
         break;
       case 'MEMO_CREATE':
+        if (isProposed) { interactions += 1; cntMemoCreate += 1; }
+        break;
       case 'MEMO_EDIT':
+        if (isProposed) { interactions += 1; cntMemoEdit += 1; }
+        break;
       case 'MEMO_DELETE':
+        if (isProposed) { interactions += 1; cntMemoDelete += 1; }
+        break;
       case 'MAPS_TO_BODY':
+        if (isProposed) { interactions += 1; cntMapsToBody += 1; }
+        break;
       case 'PARALLEL_WINDOW_CREATE':
+        if (isProposed) { interactions += 1; cntParallelWindowCreate += 1; }
+        break;
       case 'PARALLEL_WINDOW_DELETE':
         if (isProposed) interactions += 1;
         break;
       case 'MEMO_DRAG_DROP':
         dragDurMs += d.durationMs ?? 0;
-        if (isProposed) interactions += 1;
+        if (isProposed) { interactions += 1; cntMemoDragDrop += 1; }
         break;
       default:
         break;
@@ -155,6 +174,14 @@ function computeMetrics(logs, interfaceType) {
     interactions,
     idleSec: msToSec(idleMs),
     aiAnswerTotalHeightPx,
+    /* Proposed 기능별 사용 횟수 */
+    cntParallelWindowCreate,
+    cntMemoCreate,
+    cntMemoEdit,
+    cntMemoDelete,
+    cntMapsToBody,
+    cntMemoDragDrop,
+    cntParallelWindowReactivate,
   };
 }
 
@@ -171,6 +198,14 @@ const SUMMARY_HEADER = [
   '지표2: 문맥 전환(회)',
   '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
   '지표4: 상호작용(회)',
+  /* Proposed 기능별 사용 횟수 (Traditional 행은 공란) */
+  'Proposed: 추가 질문 생성(회)',
+  'Proposed: 메모 생성(회)',
+  'Proposed: 메모 편집 세션(회)',
+  'Proposed: 메모 삭제(회)',
+  'Proposed: 본문으로 이동(회)',
+  'Proposed: 메모 이동(회)',
+  'Proposed: 병렬 창 재방문(회)',
 ];
 
 const RAW_HEADER = [
@@ -180,6 +215,7 @@ const RAW_HEADER = [
 
 /** metrics 객체 → 요약 행 배열 */
 function metricsToCells(userId, ifaceType, m) {
+  const isProposed = ifaceType === 'proposed';
   return [
     userId, ifaceType,
     m.scrollDistPx, m.scrollDurSec,
@@ -188,6 +224,14 @@ function metricsToCells(userId, ifaceType, m) {
     m.contextSwitches,
     m.m3Count, m.m3DurSec, m.m3Efficiency,
     m.interactions,
+    /* Proposed 기능별 사용 횟수 — Traditional 행은 공란 */
+    isProposed ? m.cntParallelWindowCreate    : '',
+    isProposed ? m.cntMemoCreate              : '',
+    isProposed ? m.cntMemoEdit                : '',
+    isProposed ? m.cntMemoDelete              : '',
+    isProposed ? m.cntMapsToBody              : '',
+    isProposed ? m.cntMemoDragDrop            : '',
+    isProposed ? m.cntParallelWindowReactivate : '',
   ];
 }
 
