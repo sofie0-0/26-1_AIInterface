@@ -2,7 +2,7 @@
  * 503/500/429(과부하·일시오류)는 재시도로 해결되는 경우가 많다.
  * 1차 실패 → 1초 대기 후 재시도 → 2차 실패 → 2초 대기 후 재시도 → 포기
  * ─────────────────────────────────────────────────────── */
-const RETRY_DELAYS = [1000, 2000];
+const RETRY_DELAYS = [1000, 2000, 5000];
 
 export function isRetryableError(err) {
   const msg    = (err?.message ?? '').toLowerCase();
