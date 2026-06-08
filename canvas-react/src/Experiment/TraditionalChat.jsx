@@ -103,7 +103,7 @@ function makeInitialChat(id = 1) {
 export default function TraditionalChat() {
   const navigate   = useNavigate();
   const { userId, apiKey, blockIndex } = useExperiment();
-  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot } = useExperimentLog();
+  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot, logApiError } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
   const [chatHistory,  setChatHistory]  = useState(() => {
@@ -307,6 +307,12 @@ export default function TraditionalChat() {
       ];
     } catch (err) {
       console.error('[TraditionalChat 오류]', err);
+      logApiError({
+        location:     'traditional',
+        errorMessage: err?.message ?? String(err),
+        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        retryable:    isRetryableError(err),
+      });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId ? { ...m, text: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.' } : m

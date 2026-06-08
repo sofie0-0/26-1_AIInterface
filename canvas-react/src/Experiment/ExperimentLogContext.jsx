@@ -518,6 +518,20 @@ export function ExperimentLogProvider({ children }) {
   );
 
   /* ═══════════════════════════════════════════════════════════════════════════
+   * [공통] API_ERROR — API 호출 실패 시 오류 정보 수집
+   * details: {
+   *   location: 'main' | 'side' | 'note' | 'traditional',
+   *   errorMessage: string,
+   *   errorStatus:  number | null,
+   *   retryable:    boolean,
+   * }
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  const logApiError = useCallback(
+    (details = {}) => logEvent('API_ERROR', details),
+    [logEvent],
+  );
+
+  /* ═══════════════════════════════════════════════════════════════════════════
    * [공통 지표1] AI_ANSWER_HEIGHT_SNAPSHOT
    * AI 답변 블록들의 렌더링 높이 합계 스냅샷
    * details: {
@@ -589,6 +603,7 @@ export function ExperimentLogProvider({ children }) {
     logParallelWindowReactivate,
     logParallelWindowDelete,
     logAiAnswerHeightSnapshot,
+    logApiError,
 
     /* 유틸리티 */
     getTotalExperimentMs,

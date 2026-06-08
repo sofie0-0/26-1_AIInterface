@@ -47,7 +47,7 @@ import {
   STORAGE_KEY_ACTIVE_ID,
 } from './constants.js';
 import { translations, initialData } from './translations.js';
-import { callStreamWithRetry } from './utils/retryApi.js';
+import { callStreamWithRetry, isRetryableError } from './utils/retryApi.js';
 import { clamp, truncateTitle } from './utils/textUtils.js';
 import { countVisibleCharsUpTo, migrateHighlights } from './utils/highlightUtils.js';
 import MessageTextWithHighlightOverlays from './components/MessageText.jsx';
@@ -84,6 +84,7 @@ export default function NonLinearChatInterface() {
     logParallelWindowReactivate,
     logParallelWindowDelete,
     logAiAnswerHeightSnapshot,
+    logApiError,
   } = useExperimentLog();
 
   /* ── Auth 상태 (내부) ── */
@@ -864,6 +865,12 @@ export default function NonLinearChatInterface() {
       );
     } catch (err) {
       console.error('[메인채팅 오류]', err);
+      logApiError({
+        location:     'main',
+        errorMessage: err?.message ?? String(err),
+        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        retryable:    isRetryableError(err),
+      });
       setMainMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId ? { ...m, text: translations[currentLang].errorMsg } : m
@@ -946,6 +953,12 @@ export default function NonLinearChatInterface() {
       );
     } catch (err) {
       console.error('[사이드채팅 오류]', err);
+      logApiError({
+        location:     'side',
+        errorMessage: err?.message ?? String(err),
+        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        retryable:    isRetryableError(err),
+      });
       setSideChats((prev) =>
         prev.map((c) =>
           c.id === chatId
@@ -1014,6 +1027,12 @@ export default function NonLinearChatInterface() {
       );
     } catch (err) {
       console.error('[노트채팅 오류]', err);
+      logApiError({
+        location:     'note',
+        errorMessage: err?.message ?? String(err),
+        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        retryable:    isRetryableError(err),
+      });
       setNotes((prev) =>
         prev.map((n) =>
           n.id === noteId
