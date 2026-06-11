@@ -102,12 +102,12 @@ export default function ResultOverlay() {
       const rows = pendingResult ? [pendingResult, currentRow] : [currentRow];
       await downloadResultXlsx(userId, rows);
       setPendingResult(null);
+      setExperimentPhase('completed');
     } else {
       /* 첫 번째 세션: 결과를 임시 보관만 (파일 없음) */
       setPendingResult(currentRow);
+      setExperimentPhase('ready_next');
     }
-
-    setExperimentPhase('ready_next');
   };
 
   const updateQ1 = (idx, val) =>

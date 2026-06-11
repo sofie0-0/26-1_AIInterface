@@ -90,6 +90,13 @@ export default function SelectionPage() {
             <p style={{ ...instructionStyle, color: '#475569' }}>
               탐색은 <strong style={{ color: '#1e293b' }}>"(선택한 주제)가 뭐야?"</strong>와 같은 질문으로 시작해 보세요.
             </p>
+            <p style={{
+              ...instructionStyle,
+              color: '#b91c1c', fontWeight: 700,
+              borderTop: '1px solid #fecaca', paddingTop: 12, marginTop: 2,
+            }}>
+              반드시 채팅 화면 상단의 <strong style={{ color: '#991b1b' }}>[실험 시작]</strong> 버튼을 누른 후 대화를 시작해 주십시오.
+            </p>
           </div>
 
           {/* 답변할 문항 */}

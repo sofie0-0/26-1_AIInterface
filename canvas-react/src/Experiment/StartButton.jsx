@@ -82,19 +82,19 @@ function computeMetrics(logs, interfaceType) {
         if (d.action === 'leave') contextSwitches += 1;
         break;
       case 'SCROLL_PAUSE_UPWARD':
-        m3Count += 1;
-        m3DurMs += d.scrollUpStartToEnd1sMs ?? 0;
+        if (!d.section?.startsWith('parallel_window')) {
+          m3Count += 1;
+          m3DurMs += d.scrollUpStartToEnd1sMs ?? 0;
+        }
         break;
       case 'MAPS_TO_ELEMENT':
-        if (isProposed) { m3Count += 1; interactions += 1; }
+        if (isProposed) { interactions += 1; }
         break;
       case 'PARALLEL_WINDOW_REACTIVATE':
         if (isProposed) { m3Count += 1; interactions += 1; cntParallelWindowReactivate += 1; }
         break;
       case 'ELEMENT_INTERACTION':
         if (isProposed) {
-          m3Count += 1;
-          m3DurMs += d.durationMs ?? 0;
           if (d.action === 'click') interactions += 1;
         }
         break;

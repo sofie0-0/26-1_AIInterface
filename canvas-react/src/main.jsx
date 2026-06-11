@@ -5,6 +5,7 @@ import './index.css';
 import { ExperimentProvider, useExperiment } from './Experiment/ExperimentContext.jsx';
 import { ExperimentLogProvider } from './Experiment/ExperimentLogContext.jsx';
 import ResultOverlay from './Experiment/ResultOverlay.jsx';
+import CompletionOverlay from './Experiment/CompletionOverlay.jsx';
 
 const ProposedChat    = lazy(() => import('./App.jsx'));
 const LoginPage       = lazy(() => import('./Experiment/LoginPage.jsx'));
@@ -34,7 +35,8 @@ function ExperimentOverlayManager({ children }) {
   return (
     <>
       {children}
-      {experimentPhase === 'writing' && <ResultOverlay />}
+      {experimentPhase === 'writing'    && <ResultOverlay />}
+      {experimentPhase === 'completed'  && <CompletionOverlay />}
     </>
   );
 }
