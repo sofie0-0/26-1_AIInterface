@@ -6,8 +6,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
 import StartButton from './Experiment/StartButton.jsx';
+import TaskPanel from './Experiment/TaskPanel.jsx';
 import { useExperiment } from './Experiment/ExperimentContext.jsx';
 import { useExperimentLog } from './Experiment/ExperimentLogContext.jsx';
 import {
@@ -58,13 +58,12 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 
 /* ─────────────────── 메인 컴포넌트 ─────────────────── */
 export default function NonLinearChatInterface() {
-  const navigate = useNavigate();
-
   /* ── 공통 실험 Context (로그인·블록 메타데이터) ── */
   const {
-    userId:    ctxUserId,
-    blockIndex: ctxBlockIndex,
-    isLoggedIn: ctxIsLoggedIn,
+    userId:       ctxUserId,
+    blockIndex:   ctxBlockIndex,
+    isLoggedIn:   ctxIsLoggedIn,
+    selectedTopic: ctxSelectedTopic,
   } = useExperiment();
 
   /* ── 실험 로그 API (Proposed 전용 이벤트 수집) ── */
@@ -1620,13 +1619,20 @@ export default function NonLinearChatInterface() {
               {t('centerSubtitle')}{ctxBlockIndex > 0 ? ` · Block ${ctxBlockIndex}` : ''}
             </div>
           </div>
-          {/* ── 인터페이스 선택으로 돌아가기 ── */}
-          <button
-            onClick={() => navigate('/experiment-select')}
-            className="text-[12px] text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 shrink-0"
-          >
-            ← 인터페이스 선택
-          </button>
+          {/* ── 선택 주제 배지 ── */}
+          {ctxSelectedTopic && (
+            <span style={{
+              fontSize: 11.5, fontWeight: 600,
+              color: '#92400e', background: '#fef9c3',
+              borderRadius: 20, padding: '3px 10px',
+              letterSpacing: '-0.01em', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+              주제: {ctxSelectedTopic}
+            </span>
+          )}
+
+          {/* ── 과제 보기 패널 ── */}
+          <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
           <StartButton onBeforeEndBlock={saveAiAnswerHeights} />

@@ -4,6 +4,7 @@
  * HCI 사용자 실험 전용 로그 수집 컨텍스트.
  *
  * ● isExperimentActive === true 인 순간부터 이벤트를 기록한다.
+ * ● 블록 종료 시 StartButton이 즉시 xlsx 다운로드 후 clearLogs() 호출.
  *
  * ■ 자동 수집 (글로벌 리스너)
  *   MOUSE_MOVE · SCROLL(+section) · SCROLL_PAUSE_UPWARD(+section) ·
@@ -51,13 +52,6 @@ export function ExperimentLogProvider({ children }) {
   /* ── 로그 배열 ── */
   const [logs, setLogs] = useState([]);
 
-  /**
-   * archivedLogs: 이전 블록(인터페이스)에서 [실험 종료] 버튼을 눌렀을 때
-   * 보존된 로그 스냅샷 배열.
-   * { interfaceType: string, logs: entry[] } 형태로 쌓인다.
-   */
-  const [archivedLogs, setArchivedLogs] = useState([]);
-
   /* ── 실험 시작 시각 ── */
   const experimentStartTimeRef = useRef(null);
 
@@ -75,7 +69,6 @@ export function ExperimentLogProvider({ children }) {
   useEffect(() => {
     if (prevUserIdRef.current !== userId) {
       setLogs([]);
-      setArchivedLogs([]);
       prevUserIdRef.current = userId;
     }
   }, [userId]);
@@ -556,30 +549,14 @@ export function ExperimentLogProvider({ children }) {
     return Date.now() - experimentStartTimeRef.current;
   }, []);
 
-  /**
-   * archiveLogs: 현재 logs를 archivedLogs에 스냅샷으로 보존하고 활성 배열만 초기화.
-   * [실험 종료] 버튼 클릭 시 호출 → 데이터 유실 없이 다음 블록 준비.
-   */
-  const archiveLogs = useCallback(() => {
-    setLogs((currentLogs) => {
-      setArchivedLogs((prev) => [
-        ...prev,
-        { interfaceType, logs: currentLogs },
-      ]);
-      return [];
-    });
-  }, [interfaceType]);
-
-  /** 전체 로그(현재 + 아카이브) 완전 초기화 */
+  /** 현재 블록 로그 초기화 (블록 종료 후 다음 블록 준비) */
   const clearLogs = useCallback(() => {
     setLogs([]);
-    setArchivedLogs([]);
   }, []);
 
   /* ─── 컨텍스트 값 ─── */
   const value = {
     logs,
-    archivedLogs,
     logEvent,
 
     /* [공통] AI 대기 */
@@ -607,7 +584,6 @@ export function ExperimentLogProvider({ children }) {
 
     /* 유틸리티 */
     getTotalExperimentMs,
-    archiveLogs,
     clearLogs,
   };
 

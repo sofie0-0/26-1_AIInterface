@@ -12,16 +12,21 @@ function loadSession() {
 }
 
 export function ExperimentProvider({ children }) {
-  const [isLoggedIn,          setIsLoggedIn]          = useState(false);
-  const [userId,               setUserId]               = useState('');
-  const [interfaceType,        setInterfaceType]        = useState(null);
-  const [blockIndex,           setBlockIndex]           = useState(0);
-  const [isExperimentActive,   setIsExperimentActive]   = useState(false);
+  const [isLoggedIn,            setIsLoggedIn]            = useState(false);
+  const [userId,                 setUserId]                 = useState('');
+  const [interfaceType,          setInterfaceType]          = useState(null);
+  const [blockIndex,             setBlockIndex]             = useState(0);
+  const [isExperimentActive,     setIsExperimentActive]     = useState(false);
+  const [selectedTopic,          setSelectedTopic]          = useState(null);
+  const [explorationDurationMs,  setExplorationDurationMs]  = useState(0);
+  /** Session 1 결과를 임시 보관. Session 2 제출 시 합쳐서 xlsx 1개로 다운로드. */
+  const [pendingResult,          setPendingResult]          = useState(null);
 
   /**
    * experimentPhase: 실험 진행 단계 (페이지 이동 후에도 유지)
-   *   'idle'  — 실험 시작 전 (또는 전체 종료 후)
-   *   'ended' — 한 블록을 종료하고 다음 블록을 대기 중
+   *   'idle'       — 실험 시작 전 (또는 결과 제출 후 다음 세션 대기)
+   *   'writing'    — 탐색 종료, 결과 작성 오버레이 표시 중 (로그 수집 OFF)
+   *   'ready_next' — 결과 제출 완료, 다음 세션 시작 버튼 대기
    */
   const [experimentPhase, setExperimentPhase] = useState('idle');
 
@@ -35,6 +40,9 @@ export function ExperimentProvider({ children }) {
       setBlockIndex(saved.blockIndex ?? 0);
       setIsExperimentActive(saved.isExperimentActive ?? false);
       setExperimentPhase(saved.experimentPhase ?? 'idle');
+      setSelectedTopic(saved.selectedTopic ?? null);
+      setExplorationDurationMs(saved.explorationDurationMs ?? 0);
+      setPendingResult(saved.pendingResult ?? null);
     }
   }, []);
 
@@ -44,8 +52,13 @@ export function ExperimentProvider({ children }) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({
       isLoggedIn, userId, interfaceType, blockIndex,
       isExperimentActive, experimentPhase,
+      selectedTopic, explorationDurationMs, pendingResult,
     }));
-  }, [isLoggedIn, userId, interfaceType, blockIndex, isExperimentActive, experimentPhase]);
+  }, [
+    isLoggedIn, userId, interfaceType, blockIndex,
+    isExperimentActive, experimentPhase,
+    selectedTopic, explorationDurationMs, pendingResult,
+  ]);
 
   /**
    * 공통 로그인: User ID를 Context에 저장
@@ -53,7 +66,7 @@ export function ExperimentProvider({ children }) {
   const login = useCallback((id) => {
     setUserId(id);
     setIsLoggedIn(true);
-    setExperimentPhase('idle');   /* 새 사용자 로그인 시 단계 리셋 */
+    setExperimentPhase('idle');
   }, []);
 
   /**
@@ -78,6 +91,12 @@ export function ExperimentProvider({ children }) {
       setIsExperimentActive,
       experimentPhase,
       setExperimentPhase,
+      selectedTopic,
+      setSelectedTopic,
+      explorationDurationMs,
+      setExplorationDurationMs,
+      pendingResult,
+      setPendingResult,
       login,
       enterInterface,
     }}>

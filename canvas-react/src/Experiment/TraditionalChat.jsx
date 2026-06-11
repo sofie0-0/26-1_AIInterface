@@ -25,10 +25,10 @@ import { GoogleGenAI } from '@google/genai';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import { useNavigate } from 'react-router-dom';
 import { useExperiment } from './ExperimentContext.jsx';
 import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
+import TaskPanel from './TaskPanel.jsx';
 import { GEMINI_API_KEY } from '../constants.js';
 
 /* ── 상수 ── */
@@ -102,8 +102,7 @@ function makeInitialChat(id = 1) {
 }
 
 export default function TraditionalChat() {
-  const navigate   = useNavigate();
-  const { userId, blockIndex } = useExperiment();
+  const { userId, blockIndex, selectedTopic } = useExperiment();
   const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot, logApiError } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
@@ -452,12 +451,20 @@ export default function TraditionalChat() {
             </div>
           </div>
 
-          <button
-            onClick={() => navigate('/experiment-select')}
-            className="text-[12px] text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 shrink-0"
-          >
-            ← 인터페이스 선택
-          </button>
+          {/* ── 선택 주제 배지 ── */}
+          {selectedTopic && (
+            <span style={{
+              fontSize: 11.5, fontWeight: 600,
+              color: '#92400e', background: '#fef9c3',
+              borderRadius: 20, padding: '3px 10px',
+              letterSpacing: '-0.01em', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+              주제: {selectedTopic}
+            </span>
+          )}
+
+          {/* ── 과제 보기 패널 ── */}
+          <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
           <StartButton onBeforeEndBlock={saveAiAnswerHeight} />

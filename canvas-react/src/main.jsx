@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import './index.css';
 import { ExperimentProvider, useExperiment } from './Experiment/ExperimentContext.jsx';
 import { ExperimentLogProvider } from './Experiment/ExperimentLogContext.jsx';
+import ResultOverlay from './Experiment/ResultOverlay.jsx';
 
 const ProposedChat    = lazy(() => import('./App.jsx'));
 const LoginPage       = lazy(() => import('./Experiment/LoginPage.jsx'));
@@ -23,6 +24,21 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+/**
+ * 전역 오버레이 관리자.
+ * experimentPhase === 'writing' 이면 ResultOverlay를 children 위에 렌더링.
+ * App.jsx / TraditionalChat.jsx 를 수정하지 않아도 두 인터페이스 모두 커버.
+ */
+function ExperimentOverlayManager({ children }) {
+  const { experimentPhase } = useExperiment();
+  return (
+    <>
+      {children}
+      {experimentPhase === 'writing' && <ResultOverlay />}
+    </>
+  );
+}
+
 const fallbackStyle = {
   display: 'flex',
   alignItems: 'center',
@@ -39,6 +55,7 @@ createRoot(document.getElementById('root')).render(
       <ExperimentLogProvider>
         <BrowserRouter>
           <Suspense fallback={<div style={fallbackStyle}>로딩 중...</div>}>
+            <ExperimentOverlayManager>
             <Routes>
               {/* 루트 진입 → 로그인 화면으로 리다이렉트 */}
               <Route path="/" element={<Navigate to="/login" replace />} />
@@ -69,6 +86,7 @@ createRoot(document.getElementById('root')).render(
               {/* 그 외 경로 → 로그인 화면 */}
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
+            </ExperimentOverlayManager>
           </Suspense>
         </BrowserRouter>
       </ExperimentLogProvider>
