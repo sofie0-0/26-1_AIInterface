@@ -33,6 +33,7 @@ import { motion } from 'framer-motion';
 
 import {
   GEMINI_API_VERSION,
+  GEMINI_API_KEY,
   GEMINI_MODEL,
   LAYOUT,
   NOTE_CARD_W,
@@ -62,7 +63,6 @@ export default function NonLinearChatInterface() {
   /* ── 공통 실험 Context (로그인·블록 메타데이터) ── */
   const {
     userId:    ctxUserId,
-    apiKey:    ctxApiKey,
     blockIndex: ctxBlockIndex,
     isLoggedIn: ctxIsLoggedIn,
   } = useExperiment();
@@ -90,9 +90,8 @@ export default function NonLinearChatInterface() {
   /* ── Auth 상태 (내부) ── */
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId,     setUserId]     = useState('');
-  const [userApiKey, setUserApiKey] = useState('');
 
-  const handleLogin = useCallback((id, key) => {
+  const handleLogin = useCallback((id) => {
     /* userId별 키로 저장된 데이터 로드 */
     const histKey = `${STORAGE_KEY_HISTORY}-${id}`;
     const actKey  = `${STORAGE_KEY_ACTIVE_ID}-${id}`;
@@ -131,22 +130,21 @@ export default function NonLinearChatInterface() {
     setActiveSideChatId(null);
 
     setUserId(id);
-    setUserApiKey(key);
     setIsLoggedIn(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Context 로그인 연동: 공통 로그인 화면을 거쳐 온 경우 자동 초기화 ── */
   useEffect(() => {
-    if (ctxIsLoggedIn && ctxUserId && ctxApiKey && !isLoggedIn) {
-      handleLogin(ctxUserId, ctxApiKey);
+    if (ctxIsLoggedIn && ctxUserId && !isLoggedIn) {
+      handleLogin(ctxUserId);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Gemini AI ── */
   const ai = useMemo(() => {
-    if (!userApiKey) return null;
-    return new GoogleGenAI({ apiKey: userApiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
-  }, [userApiKey]);
+    if (!GEMINI_API_KEY) return null;
+    return new GoogleGenAI({ apiKey: GEMINI_API_KEY, httpOptions: { apiVersion: GEMINI_API_VERSION } });
+  }, []);
 
   /* ── 언어 감지: URL 파라미터 → 브라우저 설정 순서 ── */
   const [currentLang] = useState(() => {

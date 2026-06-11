@@ -29,6 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import { useExperiment } from './ExperimentContext.jsx';
 import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
+import { GEMINI_API_KEY } from '../constants.js';
 
 /* ── 상수 ── */
 const GEMINI_API_VERSION = 'v1';
@@ -102,7 +103,7 @@ function makeInitialChat(id = 1) {
 
 export default function TraditionalChat() {
   const navigate   = useNavigate();
-  const { userId, apiKey, blockIndex } = useExperiment();
+  const { userId, blockIndex } = useExperiment();
   const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot, logApiError } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
@@ -150,9 +151,9 @@ export default function TraditionalChat() {
 
   /* ── Gemini AI 인스턴스 ── */
   const ai = useMemo(() => {
-    if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: GEMINI_API_VERSION } });
-  }, [apiKey]);
+    if (!GEMINI_API_KEY) return null;
+    return new GoogleGenAI({ apiKey: GEMINI_API_KEY, httpOptions: { apiVersion: GEMINI_API_VERSION } });
+  }, []);
 
   /* ── 스크롤: 최초 마운트 시에만 기존 메시지 맨 아래로 ── */
   useEffect(() => {

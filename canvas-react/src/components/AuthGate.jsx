@@ -4,19 +4,18 @@ import { FONT_STACK_KO } from '../constants.js';
 /* ─────────────────── Auth Gate 컴포넌트 ─────────────────── */
 export default function AuthGate({ onLogin }) {
   const [inputUserId, setInputUserId] = useState('');
-  const [inputApiKey, setInputApiKey] = useState('');
   const [error,       setError]       = useState('');
 
-  const isValid = inputUserId.trim() !== '' && inputApiKey.trim() !== '';
+  const isValid = inputUserId.trim() !== '';
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!inputUserId.trim() || !inputApiKey.trim()) {
-      setError('유효한 API Key를 입력해 주세요.');
+    if (!inputUserId.trim()) {
+      setError('실험 ID를 입력해 주세요.');
       return;
     }
     setError('');
-    onLogin(inputUserId.trim(), inputApiKey.trim());
+    onLogin(inputUserId.trim());
   };
 
   return (
@@ -102,33 +101,6 @@ export default function AuthGate({ onLogin }) {
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', letterSpacing: '-0.01em' }}>
-              Gemini API Key
-            </label>
-            <input
-              type="password"
-              value={inputApiKey}
-              onChange={(e) => setInputApiKey(e.target.value)}
-              placeholder="AI API Key를 입력하세요"
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: 10,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#1e293b',
-                fontSize: 14,
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-                transition: 'box-shadow 0.15s',
-              }}
-              onFocus={(e) => { e.target.style.boxShadow = '0 0 0 3px rgba(250,204,21,0.35)'; e.target.style.borderColor = 'transparent'; }}
-              onBlur={(e)  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = '#e2e8f0'; }}
-            />
-          </div>
-
           {/* 유의 문구 */}
           <p style={{
             fontSize: 12.5,
@@ -141,19 +113,6 @@ export default function AuthGate({ onLogin }) {
           }}>
             실험 중에는 절대 새로고침을 하지 마세요.
             <br />새로고침 시 자동으로 로그아웃됩니다.
-          </p>
-
-          {/* 보안 안내 */}
-          <p style={{
-            fontSize: 11.5,
-            color: '#94a3b8',
-            textAlign: 'center',
-            lineHeight: 1.65,
-            wordBreak: 'keep-all',
-            margin: '-4px 0 0',
-          }}>
-            입력하신 API Key는 외부 서버로 전송되지 않으며,
-            <br />브라우저 메모리에만 유지되다가 창을 닫으면 파기됩니다.
           </p>
 
           {/* 에러 */}

@@ -1,6 +1,7 @@
 /* ─────────────────── Gemini API 상수 ─────────────────── */
 export const GEMINI_API_VERSION = 'v1';
 export const GEMINI_MODEL = 'gemini-2.5-flash';
+export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
 /* ─────────────────── 레이아웃 너비 상수 ─────────────────────────────────────
  * 이 객체가 전체 패널 너비의 단일 진실 공급원(Single Source of Truth)이다.

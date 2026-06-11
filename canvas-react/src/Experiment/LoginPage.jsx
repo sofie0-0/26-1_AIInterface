@@ -38,16 +38,15 @@ export default function LoginPage() {
   const { login } = useExperiment();
 
   const [inputUserId, setInputUserId] = useState('');
-  const [inputApiKey, setInputApiKey] = useState('');
   const [error,       setError]       = useState('');
 
-  const isValid = inputUserId.trim() !== '' && inputApiKey.trim() !== '';
+  const isValid = inputUserId.trim() !== '';
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!isValid) { setError('유효한 정보를 모두 입력해 주세요.'); return; }
+    if (!isValid) { setError('실험 ID를 입력해 주세요.'); return; }
     setError('');
-    login(inputUserId.trim(), inputApiKey.trim());
+    login(inputUserId.trim());
     navigate('/experiment-select', { replace: true });
   };
 
@@ -91,27 +90,12 @@ export default function LoginPage() {
             onChange={(e) => setInputUserId(e.target.value)}
             placeholder="실험 ID를 입력하세요 (예: user01)"
           />
-          <FormField
-            label="Gemini API Key"
-            type="password"
-            value={inputApiKey}
-            onChange={(e) => setInputApiKey(e.target.value)}
-            placeholder="AI API Key를 입력하세요"
-          />
-
           <p style={{
             fontSize: 12.5, fontWeight: 500, color: '#ef4444',
             textAlign: 'center', lineHeight: 1.6, wordBreak: 'keep-all', margin: '2px 0 0',
           }}>
             실험 중에는 절대 새로고침을 하지 마세요.<br />
             새로고침 시 자동으로 로그아웃됩니다.
-          </p>
-          <p style={{
-            fontSize: 11.5, color: '#94a3b8', textAlign: 'center',
-            lineHeight: 1.65, wordBreak: 'keep-all', margin: '-4px 0 0',
-          }}>
-            입력하신 API Key는 외부 서버로 전송되지 않으며,<br />
-            브라우저 메모리에만 유지되다가 창을 닫으면 파기됩니다.
           </p>
 
           {error && (

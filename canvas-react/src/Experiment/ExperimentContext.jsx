@@ -14,7 +14,6 @@ function loadSession() {
 export function ExperimentProvider({ children }) {
   const [isLoggedIn,          setIsLoggedIn]          = useState(false);
   const [userId,               setUserId]               = useState('');
-  const [apiKey,               setApiKey]               = useState('');
   const [interfaceType,        setInterfaceType]        = useState(null);
   const [blockIndex,           setBlockIndex]           = useState(0);
   const [isExperimentActive,   setIsExperimentActive]   = useState(false);
@@ -32,7 +31,6 @@ export function ExperimentProvider({ children }) {
     if (saved?.isLoggedIn) {
       setIsLoggedIn(true);
       setUserId(saved.userId ?? '');
-      setApiKey(saved.apiKey ?? '');
       setInterfaceType(saved.interfaceType ?? null);
       setBlockIndex(saved.blockIndex ?? 0);
       setIsExperimentActive(saved.isExperimentActive ?? false);
@@ -44,17 +42,16 @@ export function ExperimentProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return;
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-      isLoggedIn, userId, apiKey, interfaceType, blockIndex,
+      isLoggedIn, userId, interfaceType, blockIndex,
       isExperimentActive, experimentPhase,
     }));
-  }, [isLoggedIn, userId, apiKey, interfaceType, blockIndex, isExperimentActive, experimentPhase]);
+  }, [isLoggedIn, userId, interfaceType, blockIndex, isExperimentActive, experimentPhase]);
 
   /**
-   * 공통 로그인: User ID + API Key를 Context에 저장
+   * 공통 로그인: User ID를 Context에 저장
    */
-  const login = useCallback((id, key) => {
+  const login = useCallback((id) => {
     setUserId(id);
-    setApiKey(key);
     setIsLoggedIn(true);
     setExperimentPhase('idle');   /* 새 사용자 로그인 시 단계 리셋 */
   }, []);
@@ -75,7 +72,6 @@ export function ExperimentProvider({ children }) {
     <ExperimentContext.Provider value={{
       isLoggedIn,
       userId,
-      apiKey,
       interfaceType,
       blockIndex,
       isExperimentActive,
