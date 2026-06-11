@@ -59,6 +59,11 @@ function computeMetrics(logs, interfaceType) {
   let cntMemoDragDrop             = 0;
   let cntParallelWindowReactivate = 0;
 
+  let apiCallCount    = 0;
+  let apiPromptTokens = 0;
+  let apiOutputTokens = 0;
+  let apiTotalTokens  = 0;
+
   const timestamps = logs
     .map((e) => new Date(e.timestamp).getTime())
     .filter((t) => !isNaN(t));
@@ -132,6 +137,12 @@ function computeMetrics(logs, interfaceType) {
         dragDurMs += d.durationMs ?? 0;
         if (isProposed) { interactions += 1; cntMemoDragDrop += 1; }
         break;
+      case 'API_TOKEN_USAGE':
+        apiCallCount    += 1;
+        apiPromptTokens += d.promptTokens ?? 0;
+        apiOutputTokens += d.outputTokens ?? 0;
+        apiTotalTokens  += d.totalTokens  ?? 0;
+        break;
       default:
         break;
     }
@@ -171,6 +182,10 @@ function computeMetrics(logs, interfaceType) {
     cntMapsToBody,
     cntMemoDragDrop,
     cntParallelWindowReactivate,
+    apiCallCount,
+    apiPromptTokens,
+    apiOutputTokens,
+    apiTotalTokens,
   };
 }
 
@@ -193,6 +208,10 @@ const SUMMARY_HEADER = [
   'Proposed: 본문으로 이동(회)',
   'Proposed: 메모 이동(회)',
   'Proposed: 병렬 창 재방문(회)',
+  'API 호출(회)',
+  'API 입력 토큰(prompt)',
+  'API 출력 토큰(output)',
+  'API 총 토큰(total)',
 ];
 
 const RAW_HEADER = [
@@ -217,6 +236,10 @@ function metricsToCells(userId, ifaceType, m) {
     isProposed ? m.cntMapsToBody               : '',
     isProposed ? m.cntMemoDragDrop             : '',
     isProposed ? m.cntParallelWindowReactivate : '',
+    m.apiCallCount,
+    m.apiPromptTokens,
+    m.apiOutputTokens,
+    m.apiTotalTokens,
   ];
 }
 

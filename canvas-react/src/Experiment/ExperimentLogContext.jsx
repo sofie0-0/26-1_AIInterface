@@ -11,7 +11,7 @@
  *   CONTEXT_SWITCH · KEYBOARD_TYPING
  *
  * ■ 컴포넌트에서 명시적으로 호출
- *   [공통]  AI_RESPONSE_WAIT
+ *   [공통]  AI_RESPONSE_WAIT · API_TOKEN_USAGE
  *   [Traditional]  PROMPT_SUBMIT_TRADITIONAL
  *   [Proposed]  PROMPT_SUBMIT · MEMO_CREATE · MEMO_EDIT · MEMO_DELETE ·
  *               MAPS_TO_BODY · MAPS_TO_ELEMENT · MEMO_DRAG_DROP ·
@@ -525,6 +525,20 @@ export function ExperimentLogProvider({ children }) {
   );
 
   /* ═══════════════════════════════════════════════════════════════════════════
+   * [공통] API_TOKEN_USAGE — 성공한 Gemini 호출의 토큰 사용량
+   * details: {
+   *   location: 'main' | 'side' | 'note' | 'traditional',
+   *   promptTokens: number,
+   *   outputTokens: number,
+   *   totalTokens:  number,
+   * }
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  const logApiTokenUsage = useCallback(
+    (details = {}) => logEvent('API_TOKEN_USAGE', details),
+    [logEvent],
+  );
+
+  /* ═══════════════════════════════════════════════════════════════════════════
    * [공통 지표1] AI_ANSWER_HEIGHT_SNAPSHOT
    * AI 답변 블록들의 렌더링 높이 합계 스냅샷
    * details: {
@@ -581,6 +595,7 @@ export function ExperimentLogProvider({ children }) {
     logParallelWindowDelete,
     logAiAnswerHeightSnapshot,
     logApiError,
+    logApiTokenUsage,
 
     /* 유틸리티 */
     getTotalExperimentMs,
