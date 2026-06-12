@@ -15,16 +15,32 @@ export function isRetryableError(err) {
   );
 }
 
+/** 스트림 마지막 청크의 usageMetadata → Summary 집계용 숫자 */
+export function parseTokenUsage(usageMetadata) {
+  if (!usageMetadata) return null;
+
+  const promptTokens = usageMetadata.promptTokenCount ?? 0;
+  const outputTokens = usageMetadata.candidatesTokenCount ?? 0;
+  const totalTokens  = usageMetadata.totalTokenCount
+    ?? (promptTokens + outputTokens);
+
+  if (promptTokens === 0 && outputTokens === 0 && totalTokens === 0) return null;
+
+  return { promptTokens, outputTokens, totalTokens };
+}
+
 export async function callStreamWithRetry(streamFn, onChunk) {
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     try {
       const stream = await streamFn();
       let full = '';
+      let usage = null;
       for await (const chunk of stream) {
         full += chunk.text ?? '';
         onChunk(full);
+        if (chunk.usageMetadata) usage = chunk.usageMetadata;
       }
-      return full;
+      return { text: full, usage };
     } catch (err) {
       const isLast     = attempt === RETRY_DELAYS.length;
       const retryable  = isRetryableError(err);

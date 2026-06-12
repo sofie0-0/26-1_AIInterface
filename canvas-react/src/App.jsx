@@ -48,7 +48,7 @@ import {
   STORAGE_KEY_ACTIVE_ID,
 } from './constants.js';
 import { translations, initialData } from './translations.js';
-import { callStreamWithRetry, isRetryableError } from './utils/retryApi.js';
+import { callStreamWithRetry, isRetryableError, parseTokenUsage } from './utils/retryApi.js';
 import { clamp, truncateTitle } from './utils/textUtils.js';
 import { countVisibleCharsUpTo, migrateHighlights } from './utils/highlightUtils.js';
 import MessageTextWithHighlightOverlays from './components/MessageText.jsx';
@@ -84,6 +84,7 @@ export default function NonLinearChatInterface() {
     logParallelWindowDelete,
     logAiAnswerHeightSnapshot,
     logApiError,
+    logApiTokenUsage,
   } = useExperimentLog();
 
   /* ── Auth 상태 (내부) ── */
@@ -847,7 +848,7 @@ export default function NonLinearChatInterface() {
       if (!ai) throw new Error('API 키 없음');
       const sysInstr = translations[currentLang].systemInstruction;
       const sysAck   = translations[currentLang].sideChatAck;
-      await callStreamWithRetry(
+      const { usage: mainUsage } = await callStreamWithRetry(
         () => ai.models.generateContentStream({
           model: GEMINI_MODEL,
           contents: [
@@ -860,6 +861,8 @@ export default function NonLinearChatInterface() {
           prev.map((m) => (m.id === aiMsgId ? { ...m, text: full } : m))
         ),
       );
+      const mainTokens = parseTokenUsage(mainUsage);
+      if (mainTokens) logApiTokenUsage({ location: 'main', ...mainTokens });
     } catch (err) {
       console.error('[메인채팅 오류]', err);
       logApiError({
@@ -932,7 +935,7 @@ export default function NonLinearChatInterface() {
         ...conversationHistory,
       ];
 
-      await callStreamWithRetry(
+      const { usage: sideUsage } = await callStreamWithRetry(
         () => {
           const chatSession = ai.chats.create({
             model: GEMINI_MODEL,
@@ -948,6 +951,8 @@ export default function NonLinearChatInterface() {
           )
         ),
       );
+      const sideTokens = parseTokenUsage(sideUsage);
+      if (sideTokens) logApiTokenUsage({ location: 'side', ...sideTokens });
     } catch (err) {
       console.error('[사이드채팅 오류]', err);
       logApiError({
@@ -1012,7 +1017,7 @@ export default function NonLinearChatInterface() {
         ...rawHistory,
       ];
 
-      await callStreamWithRetry(
+      const { usage: noteUsage } = await callStreamWithRetry(
         () => ai.models.generateContentStream({ model: GEMINI_MODEL, contents }),
         (full) => setNotes((prev) =>
           prev.map((n) =>
@@ -1022,6 +1027,8 @@ export default function NonLinearChatInterface() {
           )
         ),
       );
+      const noteTokens = parseTokenUsage(noteUsage);
+      if (noteTokens) logApiTokenUsage({ location: 'note', ...noteTokens });
     } catch (err) {
       console.error('[노트채팅 오류]', err);
       logApiError({
