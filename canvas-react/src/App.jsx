@@ -48,7 +48,13 @@ import {
   STORAGE_KEY_ACTIVE_ID,
 } from './constants.js';
 import { translations, initialData } from './translations.js';
-import { callStreamWithRetry, isRetryableError, parseTokenUsage } from './utils/retryApi.js';
+import {
+  callStreamWithRetry,
+  extractHttpStatus,
+  getApiErrorMessage,
+  isRetryableError,
+  parseTokenUsage,
+} from './utils/retryApi.js';
 import { clamp, truncateTitle } from './utils/textUtils.js';
 import { countVisibleCharsUpTo, migrateHighlights } from './utils/highlightUtils.js';
 import MessageTextWithHighlightOverlays from './components/MessageText.jsx';
@@ -868,12 +874,21 @@ export default function NonLinearChatInterface() {
       logApiError({
         location:     'main',
         errorMessage: err?.message ?? String(err),
-        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        errorStatus:  extractHttpStatus(err),
         retryable:    isRetryableError(err),
       });
       setMainMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId ? { ...m, text: translations[currentLang].errorMsg } : m
+          m.id === aiMsgId
+            ? {
+                ...m,
+                text: getApiErrorMessage(err, {
+                  msg503: t('errorMsg503'),
+                  msg429: t('errorMsg429'),
+                  fallback: t('errorMsg'),
+                }),
+              }
+            : m
         )
       );
     } finally {
@@ -958,13 +973,27 @@ export default function NonLinearChatInterface() {
       logApiError({
         location:     'side',
         errorMessage: err?.message ?? String(err),
-        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        errorStatus:  extractHttpStatus(err),
         retryable:    isRetryableError(err),
       });
       setSideChats((prev) =>
         prev.map((c) =>
           c.id === chatId
-            ? { ...c, messages: c.messages.map((m) => m.id === aiMsgId ? { ...m, text: translations[currentLang].sideChatErrorMsg } : m) }
+            ? {
+                ...c,
+                messages: c.messages.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        text: getApiErrorMessage(err, {
+                          msg503: t('sideChatErrorMsg503'),
+                          msg429: t('sideChatErrorMsg429'),
+                          fallback: t('sideChatErrorMsg'),
+                        }),
+                      }
+                    : m
+                ),
+              }
             : c
         )
       );
@@ -1034,13 +1063,27 @@ export default function NonLinearChatInterface() {
       logApiError({
         location:     'note',
         errorMessage: err?.message ?? String(err),
-        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        errorStatus:  extractHttpStatus(err),
         retryable:    isRetryableError(err),
       });
       setNotes((prev) =>
         prev.map((n) =>
           n.id === noteId
-            ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: translations[currentLang].sideChatErrorMsg } : m) }
+            ? {
+                ...n,
+                messages: (n.messages || []).map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        text: getApiErrorMessage(err, {
+                          msg503: t('sideChatErrorMsg503'),
+                          msg429: t('sideChatErrorMsg429'),
+                          fallback: t('sideChatErrorMsg'),
+                        }),
+                      }
+                    : m
+                ),
+              }
             : n
         )
       );

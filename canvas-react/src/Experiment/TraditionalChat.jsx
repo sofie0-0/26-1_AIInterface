@@ -30,7 +30,14 @@ import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
 import TaskPanel from './TaskPanel.jsx';
 import { GEMINI_API_KEY } from '../constants.js';
-import { callStreamWithRetry, isRetryableError, parseTokenUsage } from '../utils/retryApi.js';
+import {
+  callStreamWithRetry,
+  extractHttpStatus,
+  getApiErrorMessage,
+  isRetryableError,
+  parseTokenUsage,
+} from '../utils/retryApi.js';
+import { translations } from '../translations.js';
 
 /* ── 상수 ── */
 const GEMINI_API_VERSION = 'v1';
@@ -280,12 +287,22 @@ export default function TraditionalChat() {
       logApiError({
         location:     'traditional',
         errorMessage: err?.message ?? String(err),
-        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
+        errorStatus:  extractHttpStatus(err),
         retryable:    isRetryableError(err),
       });
+      const tr = translations.ko;
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId ? { ...m, text: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.' } : m
+          m.id === aiMsgId
+            ? {
+                ...m,
+                text: getApiErrorMessage(err, {
+                  msg503: tr.errorMsg503,
+                  msg429: tr.errorMsg429,
+                  fallback: tr.errorMsg,
+                }),
+              }
+            : m
         )
       );
     } finally {
