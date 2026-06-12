@@ -30,14 +30,6 @@ import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
 import TaskPanel from './TaskPanel.jsx';
 import { GEMINI_API_KEY } from '../constants.js';
-import {
-  API_OVERLOAD_USER_MESSAGE,
-  callStreamWithRetry,
-  extractHttpStatus,
-  getApiErrorMessage,
-  isRetryableError,
-  parseTokenUsage,
-} from '../utils/retryApi.js';
 
 /* ── 상수 ── */
 const GEMINI_API_VERSION = 'v1';
@@ -45,6 +37,40 @@ const GEMINI_MODEL       = 'gemini-2.5-flash';
 const FONT_STACK_KO      = '"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif';
 const SIDEBAR_W          = 280;
 const INIT_MSG           = '안녕하세요! 무엇이든 질문해 주세요. 성심껏 답변해 드리겠습니다.';
+
+/* ── API 재시도 헬퍼 ── */
+const RETRY_DELAYS = [1000, 2000];
+
+function isRetryableError(err) {
+  const msg    = (err?.message ?? '').toLowerCase();
+  const status = err?.status ?? err?.httpError?.statusCode;
+  return (
+    status === 503 || status === 500 || status === 429 ||
+    msg.includes('503') || msg.includes('500') || msg.includes('429') ||
+    msg.includes('overload') || msg.includes('unavailable') ||
+    msg.includes('failed to fetch') || msg.includes('network')
+  );
+}
+
+async function callStreamWithRetry(streamFn, onChunk) {
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    try {
+      const stream = await streamFn();
+      let full = '';
+      for await (const chunk of stream) {
+        full += chunk.text ?? '';
+        onChunk(full);
+      }
+      return full;
+    } catch (err) {
+      const isLast    = attempt === RETRY_DELAYS.length;
+      const retryable = isRetryableError(err);
+      console.error(`[Gemini API] 시도 ${attempt + 1} 실패 (retryable=${retryable}):`, err);
+      if (isLast || !retryable) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
 
 /* ── sessionStorage 헬퍼 ── */
 function makeStorageKey(userId, blockIndex) {
@@ -77,14 +103,7 @@ function makeInitialChat(id = 1) {
 
 export default function TraditionalChat() {
   const { userId, blockIndex, selectedTopic } = useExperiment();
-  const {
-    logPromptSubmitTraditional,
-    startAIWait,
-    stopAIWait,
-    logAiAnswerHeightSnapshot,
-    logApiError,
-    logApiTokenUsage,
-  } = useExperimentLog();
+  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot, logApiError } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
   const [chatHistory,  setChatHistory]  = useState(() => {
@@ -272,7 +291,7 @@ export default function TraditionalChat() {
         ...conversationHistory.current.slice(0, -1),
       ];
 
-      const { text: fullText, usage } = await callStreamWithRetry(
+      const fullText = await callStreamWithRetry(
         () => {
           const chatSession = ai.chats.create({ model: GEMINI_MODEL, history: fullHistory });
           return chatSession.sendMessageStream({ message: text });
@@ -281,8 +300,6 @@ export default function TraditionalChat() {
           prev.map((m) => (m.id === aiMsgId ? { ...m, text: partial } : m))
         ),
       );
-      const tokens = parseTokenUsage(usage);
-      if (tokens) logApiTokenUsage({ location: 'traditional', ...tokens });
 
       conversationHistory.current = [
         ...conversationHistory.current,
@@ -293,14 +310,12 @@ export default function TraditionalChat() {
       logApiError({
         location:     'traditional',
         errorMessage: err?.message ?? String(err),
-        errorStatus:  extractHttpStatus(err),
+        errorStatus:  err?.status ?? err?.httpError?.statusCode ?? null,
         retryable:    isRetryableError(err),
       });
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === aiMsgId
-            ? { ...m, text: getApiErrorMessage(err, API_OVERLOAD_USER_MESSAGE) }
-            : m
+          m.id === aiMsgId ? { ...m, text: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.' } : m
         )
       );
     } finally {
@@ -309,7 +324,7 @@ export default function TraditionalChat() {
       setStreamingMsgId(null);
       inputRef.current?.focus();
     }
-  }, [inputText, isStreaming, ai, activeChatId, logPromptSubmitTraditional, logApiTokenUsage, startAIWait, stopAIWait]);
+  }, [inputText, isStreaming, ai, activeChatId, logPromptSubmitTraditional, startAIWait, stopAIWait]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
