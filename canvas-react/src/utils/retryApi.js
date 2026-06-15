@@ -10,7 +10,7 @@ const RETRY_DELAYS = [1000, 2000, 5000];
 
 
 
-/** fetch / @google/genai / OpenAI SDK 오류에서 HTTP 상태 코드 추출 */
+/** fetch / OpenAI SDK 오류에서 HTTP 상태 코드 추출 */
 
 export function extractHttpStatus(err) {
 
@@ -124,34 +124,6 @@ export function isRetryableError(err) {
 
 
 
-/** Gemini usageMetadata → Summary 집계용 숫자 */
-
-export function parseGeminiTokenUsage(usageMetadata) {
-
-  if (!usageMetadata) return null;
-
-
-
-  const promptTokens = usageMetadata.promptTokenCount ?? 0;
-
-  const outputTokens = usageMetadata.candidatesTokenCount ?? 0;
-
-  const totalTokens  = usageMetadata.totalTokenCount
-
-    ?? (promptTokens + outputTokens);
-
-
-
-  if (promptTokens === 0 && outputTokens === 0 && totalTokens === 0) return null;
-
-
-
-  return { promptTokens, outputTokens, totalTokens };
-
-}
-
-
-
 /** OpenAI ChatCompletion usage → Summary 집계용 숫자 */
 
 export function parseOpenAITokenUsage(usage) {
@@ -189,52 +161,6 @@ export function getApiErrorMessage(err, { msg503, msg429, fallback }) {
   if (status === 503 || status === 500) return msg503 ?? fallback;
 
   return fallback;
-
-}
-
-
-
-/** Gemini @google/genai 스트림 (chunk.text, chunk.usageMetadata) */
-
-export async function callGeminiStreamWithRetry(streamFn, onChunk) {
-
-  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-
-    try {
-
-      const stream = await streamFn();
-
-      let full = '';
-
-      let usage = null;
-
-      for await (const chunk of stream) {
-
-        full += chunk.text ?? '';
-
-        onChunk(full);
-
-        if (chunk.usageMetadata) usage = chunk.usageMetadata;
-
-      }
-
-      return { text: full, usage };
-
-    } catch (err) {
-
-      const isLast     = attempt === RETRY_DELAYS.length;
-
-      const retryable  = isRetryableError(err);
-
-      console.error(`[Gemini API] 시도 ${attempt + 1} 실패 (retryable=${retryable}):`, err);
-
-      if (isLast || !retryable) throw err;
-
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
-
-    }
-
-  }
 
 }
 
@@ -289,13 +215,5 @@ export async function callOpenAIStreamWithRetry(streamFn, onChunk) {
   }
 
 }
-
-
-
-/** App.jsx Gemini 호환 alias (App migration 후 제거) */
-
-export const callStreamWithRetry = callGeminiStreamWithRetry;
-
-export const parseTokenUsage = parseGeminiTokenUsage;
 
 

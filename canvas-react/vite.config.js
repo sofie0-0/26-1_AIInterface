@@ -11,7 +11,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
-          if (id.includes('@google/genai'))          return 'vendor-ai';
           if (id.includes('framer-motion'))          return 'vendor-motion';
           if (
             id.includes('react-markdown') ||
