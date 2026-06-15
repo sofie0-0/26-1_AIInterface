@@ -21,7 +21,7 @@ import {
   Send,
   Trash2,
 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -29,19 +29,17 @@ import { useExperiment } from './ExperimentContext.jsx';
 import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
 import TaskPanel from './TaskPanel.jsx';
-import { GEMINI_API_KEY } from '../constants.js';
+import { OPENAI_API_KEY, OPENAI_MODEL } from '../constants.js';
 import {
-  callStreamWithRetry,
+  callOpenAIStreamWithRetry,
   extractHttpStatus,
   getApiErrorMessage,
   isRetryableError,
-  parseTokenUsage,
+  parseOpenAITokenUsage,
 } from '../utils/retryApi.js';
 import { translations } from '../translations.js';
 
 /* ── 상수 ── */
-const GEMINI_API_VERSION = 'v1';
-const GEMINI_MODEL       = 'gemini-2.5-flash';
 const FONT_STACK_KO      = '"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif';
 const SIDEBAR_W          = 280;
 const INIT_MSG           = '안녕하세요! 무엇이든 질문해 주세요. 성심껏 답변해 드리겠습니다.';
@@ -71,7 +69,7 @@ function makeInitialChat(id = 1) {
     id,
     title: '새로운 채팅',
     messages: [{ id: 1, sender: 'ai', text: INIT_MSG }],
-    history: [],   // Gemini API용 대화 기록
+    history: [],   // API 대화 기록 (role + parts, sessionStorage 호환)
   };
 }
 
@@ -122,10 +120,10 @@ export default function TraditionalChat() {
   /* ── conversationHistory: 활성 채팅 기준 메모리 참조 ── */
   const conversationHistory = useRef(activeChat?.history ?? []);
 
-  /* ── Gemini AI 인스턴스 ── */
-  const ai = useMemo(() => {
-    if (!GEMINI_API_KEY) return null;
-    return new GoogleGenAI({ apiKey: GEMINI_API_KEY, httpOptions: { apiVersion: GEMINI_API_VERSION } });
+  /* ── OpenAI 클라이언트 ── */
+  const openai = useMemo(() => {
+    if (!OPENAI_API_KEY) return null;
+    return new OpenAI({ apiKey: OPENAI_API_KEY, dangerouslyAllowBrowser: true });
   }, []);
 
   /* ── 스크롤: 최초 마운트 시에만 기존 메시지 맨 아래로 ── */
@@ -224,7 +222,7 @@ export default function TraditionalChat() {
   /* ── 메시지 전송 ── */
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || isStreaming || !ai) return;
+    if (!text || isStreaming || !openai) return;
 
     logPromptSubmitTraditional({ chatId: activeChatId });
 
@@ -259,23 +257,28 @@ export default function TraditionalChat() {
 
     try {
       const systemInstruction = '반드시 한국어로 답변하세요.';
-      const fullHistory = [
-        { role: 'user',  parts: [{ text: systemInstruction }] },
-        { role: 'model', parts: [{ text: '네, 한국어로 답변하겠습니다.' }] },
-        ...conversationHistory.current.slice(0, -1),
+      const messages = [
+        { role: 'system', content: systemInstruction },
+        ...conversationHistory.current.slice(0, -1).map((m) => ({
+          role: m.role === 'model' ? 'assistant' : 'user',
+          content: m.parts[0].text,
+        })),
+        { role: 'user', content: text },
       ];
 
-      const { text: fullText, usage } = await callStreamWithRetry(
-        () => {
-          const chatSession = ai.chats.create({ model: GEMINI_MODEL, history: fullHistory });
-          return chatSession.sendMessageStream({ message: text });
-        },
+      const { text: fullText, usage } = await callOpenAIStreamWithRetry(
+        () => openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         (partial) => setMessages((prev) =>
           prev.map((m) => (m.id === aiMsgId ? { ...m, text: partial } : m))
         ),
       );
 
-      const tradTokens = parseTokenUsage(usage);
+      const tradTokens = parseOpenAITokenUsage(usage);
       if (tradTokens) logApiTokenUsage({ location: 'traditional', ...tradTokens });
 
       conversationHistory.current = [
@@ -311,7 +314,7 @@ export default function TraditionalChat() {
       setStreamingMsgId(null);
       inputRef.current?.focus();
     }
-  }, [inputText, isStreaming, ai, activeChatId, logPromptSubmitTraditional, startAIWait, stopAIWait]);
+  }, [inputText, isStreaming, openai, activeChatId, logPromptSubmitTraditional, startAIWait, stopAIWait, logApiTokenUsage]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
