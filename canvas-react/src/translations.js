@@ -58,8 +58,6 @@ export const translations = {
 
 [메인 대화 내용]
 ${mainCtx}`,
-    noteSystemInstruction: (mainCtx) =>
-`당신은 사용자의 비선형적 사고를 돕는 연구 보조원입니다. 메인 대화의 흐름을 바탕으로 이 포스트잇의 질문에 구체적으로 답해주세요.\n\n[메인 대화 내용]\n${mainCtx}`,
   },
   en: {
     newChat: 'New Chat',
@@ -119,8 +117,6 @@ ${mainCtx}`,
 
 [Main Conversation]
 ${mainCtx}`,
-    noteSystemInstruction: (mainCtx) =>
-`You are a research assistant supporting non-linear thinking. Based on the main conversation, answer the question in this note specifically.\n\n[Main Conversation]\n${mainCtx}`,
   },
 };
 

@@ -28,14 +28,10 @@ import {
   X,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { motion } from 'framer-motion';
 
 import {
-  GEMINI_API_VERSION,
-  GEMINI_API_KEY,
-  GEMINI_MODEL,
   OPENAI_API_KEY,
   OPENAI_MODEL,
   LAYOUT,
@@ -52,12 +48,10 @@ import {
 } from './constants.js';
 import { translations, initialData } from './translations.js';
 import {
-  callStreamWithRetry,
   callOpenAIStreamWithRetry,
   extractHttpStatus,
   getApiErrorMessage,
   isRetryableError,
-  parseTokenUsage,
   parseOpenAITokenUsage,
 } from './utils/retryApi.js';
 import { clamp, truncateTitle } from './utils/textUtils.js';
@@ -151,12 +145,6 @@ export default function NonLinearChatInterface() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Gemini AI ── */
-  const ai = useMemo(() => {
-    if (!GEMINI_API_KEY) return null;
-    return new GoogleGenAI({ apiKey: GEMINI_API_KEY, httpOptions: { apiVersion: GEMINI_API_VERSION } });
-  }, []);
-
   /* ── OpenAI (메인·사이드 채팅) ── */
   const openai = useMemo(() => {
     if (!OPENAI_API_KEY) return null;
@@ -233,7 +221,6 @@ export default function NonLinearChatInterface() {
   const [isMainLoading,      setIsMainLoading]      = useState(false);
   const [streamingAiMsgId,   setStreamingAiMsgId]   = useState(null);
   const [loadingSideChatIds, setLoadingSideChatIds] = useState(new Set());
-  const [loadingNoteIds,     setLoadingNoteIds]     = useState(new Set());
 
   /* 하이라이트 강조 상태 */
   const [flashingId,        setFlashingId]        = useState(null); // 포스트잇 강조
@@ -1013,95 +1000,6 @@ export default function NonLinearChatInterface() {
     } finally {
       stopAIWait();
       setLoadingSideChatIds((prev) => { const s = new Set(prev); s.delete(chatId); return s; });
-    }
-  };
-
-  /* ── 노트 AI 제출 (스트리밍) ── */
-  const handleNoteSubmit = async (noteId, e) => {
-    e.preventDefault();
-    const note = notes.find((n) => n.id === noteId);
-    if (!note || !note.input?.trim() || loadingNoteIds.has(noteId)) return;
-
-    const text = note.input.trim();
-    const userMsg = { id: Date.now(), sender: 'user', text };
-    setNotes((prev) =>
-      prev.map((n) => n.id === noteId ? { ...n, messages: [...(n.messages || []), userMsg], input: '' } : n)
-    );
-
-    if (!ai) return;
-
-    const aiMsgId = Date.now() + 1;
-    setLoadingNoteIds((prev) => new Set([...prev, noteId]));
-    setNotes((prev) =>
-      prev.map((n) =>
-        n.id === noteId
-          ? { ...n, messages: [...(n.messages || []), { id: aiMsgId, sender: 'ai', text: '' }] }
-          : n
-      )
-    );
-
-    try {
-      const tr = translations[currentLang];
-      const mainCtx = mainMessages
-        .map((m) => `${m.sender === 'user' ? tr.aiUser : tr.aiAI}: ${m.text}`)
-        .join('\n');
-      const sysInstr = tr.noteSystemInstruction(mainCtx);
-
-      const rawHistory = (note.messages || [])
-        .filter((m) => !(m.sender === 'ai' && m.text === ''))
-        .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
-      rawHistory.push({ role: 'user', parts: [{ text }] });
-
-      // v1 API: 시스템 지침을 history 맨 앞 user/model 쌍으로 삽입
-      const contents = [
-        { role: 'user',  parts: [{ text: sysInstr }] },
-        { role: 'model', parts: [{ text: tr.sideChatAck }] },
-        ...rawHistory,
-      ];
-
-      const { usage: noteUsage } = await callStreamWithRetry(
-        () => ai.models.generateContentStream({ model: GEMINI_MODEL, contents }),
-        (full) => setNotes((prev) =>
-          prev.map((n) =>
-            n.id === noteId
-              ? { ...n, messages: (n.messages || []).map((m) => m.id === aiMsgId ? { ...m, text: full } : m) }
-              : n
-          )
-        ),
-      );
-      const noteTokens = parseTokenUsage(noteUsage);
-      if (noteTokens) logApiTokenUsage({ location: 'note', ...noteTokens });
-    } catch (err) {
-      console.error('[노트채팅 오류]', err);
-      logApiError({
-        location:     'note',
-        errorMessage: err?.message ?? String(err),
-        errorStatus:  extractHttpStatus(err),
-        retryable:    isRetryableError(err),
-      });
-      setNotes((prev) =>
-        prev.map((n) =>
-          n.id === noteId
-            ? {
-                ...n,
-                messages: (n.messages || []).map((m) =>
-                  m.id === aiMsgId
-                    ? {
-                        ...m,
-                        text: getApiErrorMessage(err, {
-                          msg503: t('sideChatErrorMsg503'),
-                          msg429: t('sideChatErrorMsg429'),
-                          fallback: t('sideChatErrorMsg'),
-                        }),
-                      }
-                    : m
-                ),
-              }
-            : n
-        )
-      );
-    } finally {
-      setLoadingNoteIds((prev) => { const s = new Set(prev); s.delete(noteId); return s; });
     }
   };
 
