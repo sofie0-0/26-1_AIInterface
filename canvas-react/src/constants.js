@@ -3,6 +3,10 @@ export const GEMINI_API_VERSION = 'v1';
 export const GEMINI_MODEL = 'gemini-2.5-flash';
 export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
+/* ─────────────────── OpenAI API 상수 ─────────────────── */
+export const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY ?? '';
+export const OPENAI_MODEL = 'gpt-4o-mini';
+
 /* ─────────────────── 레이아웃 너비 상수 ─────────────────────────────────────
  * 이 객체가 전체 패널 너비의 단일 진실 공급원(Single Source of Truth)이다.
  * 패널 너비를 변경할 때는 반드시 이 객체만 수정하고,
