@@ -851,9 +851,18 @@ export default function NonLinearChatInterface() {
     try {
       if (!openai) throw new Error('API 키 없음');
       const sysInstr = translations[currentLang].systemInstruction;
+      const priorTurns = mainMessages
+        .filter((m) => !(m.sender === 'ai' && m.text === ''))
+        .map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        }));
+      const firstUserIdx = priorTurns.findIndex((m) => m.role === 'user');
+      const conversationHistory = firstUserIdx >= 0 ? priorTurns.slice(firstUserIdx) : [];
       const messages = [
         { role: 'system', content: sysInstr },
-        { role: 'user',   content: text },
+        ...conversationHistory,
+        { role: 'user', content: text },
       ];
       const { usage: mainUsage } = await callOpenAIStreamWithRetry(
         () => openai.chat.completions.create({
