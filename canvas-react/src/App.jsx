@@ -29,12 +29,15 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { motion } from 'framer-motion';
 
 import {
   GEMINI_API_VERSION,
   GEMINI_API_KEY,
   GEMINI_MODEL,
+  OPENAI_API_KEY,
+  OPENAI_MODEL,
   LAYOUT,
   NOTE_CARD_W,
   NOTE_CARD_H,
@@ -50,10 +53,12 @@ import {
 import { translations, initialData } from './translations.js';
 import {
   callStreamWithRetry,
+  callOpenAIStreamWithRetry,
   extractHttpStatus,
   getApiErrorMessage,
   isRetryableError,
   parseTokenUsage,
+  parseOpenAITokenUsage,
 } from './utils/retryApi.js';
 import { clamp, truncateTitle } from './utils/textUtils.js';
 import { countVisibleCharsUpTo, migrateHighlights } from './utils/highlightUtils.js';
@@ -152,6 +157,12 @@ export default function NonLinearChatInterface() {
     return new GoogleGenAI({ apiKey: GEMINI_API_KEY, httpOptions: { apiVersion: GEMINI_API_VERSION } });
   }, []);
 
+  /* ── OpenAI (메인·사이드 채팅) ── */
+  const openai = useMemo(() => {
+    if (!OPENAI_API_KEY) return null;
+    return new OpenAI({ apiKey: OPENAI_API_KEY, dangerouslyAllowBrowser: true });
+  }, []);
+
   /* ── 언어 감지: URL 파라미터 → 브라우저 설정 순서 ── */
   const [currentLang] = useState(() => {
     const urlLang = new URLSearchParams(window.location.search).get('lang');
@@ -167,7 +178,7 @@ export default function NonLinearChatInterface() {
 
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log('사용 모델:', GEMINI_MODEL);
+      console.log('사용 모델:', OPENAI_MODEL);
       console.log('현재 언어:', currentLang);
     }
   }, [currentLang]);
@@ -851,23 +862,24 @@ export default function NonLinearChatInterface() {
     startAIWait();
 
     try {
-      if (!ai) throw new Error('API 키 없음');
+      if (!openai) throw new Error('API 키 없음');
       const sysInstr = translations[currentLang].systemInstruction;
-      const sysAck   = translations[currentLang].sideChatAck;
-      const { usage: mainUsage } = await callStreamWithRetry(
-        () => ai.models.generateContentStream({
-          model: GEMINI_MODEL,
-          contents: [
-            { role: 'user',  parts: [{ text: sysInstr }] },
-            { role: 'model', parts: [{ text: sysAck }] },
-            { role: 'user',  parts: [{ text }] },
-          ],
+      const messages = [
+        { role: 'system', content: sysInstr },
+        { role: 'user',   content: text },
+      ];
+      const { usage: mainUsage } = await callOpenAIStreamWithRetry(
+        () => openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
         }),
         (full) => setMainMessages((prev) =>
           prev.map((m) => (m.id === aiMsgId ? { ...m, text: full } : m))
         ),
       );
-      const mainTokens = parseTokenUsage(mainUsage);
+      const mainTokens = parseOpenAITokenUsage(mainUsage);
       if (mainTokens) logApiTokenUsage({ location: 'main', ...mainTokens });
     } catch (err) {
       console.error('[메인채팅 오류]', err);
@@ -916,7 +928,7 @@ export default function NonLinearChatInterface() {
       prev.map((c) => c.id === chatId ? { ...c, messages: [...c.messages, userMsg], input: '' } : c)
     );
 
-    if (!ai) return;
+    if (!openai) return;
 
     const aiMsgId = Date.now() + 1;
     setLoadingSideChatIds((prev) => new Set([...prev, chatId]));
@@ -937,27 +949,28 @@ export default function NonLinearChatInterface() {
       const systemInstruction =
         `${tr.sideChatSystemBase}\n\n${tr.sideChatContextPrefix(mainCtx)}`;
 
-      // v1 API는 config.systemInstruction 미지원 → history 맨 앞 user/model 쌍으로 삽입
-      const allHistory = (chat.messages || [])
+      const priorTurns = (chat.messages || [])
         .filter((m) => !(m.sender === 'ai' && m.text === ''))
-        .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
-      const firstUserIdx = allHistory.findIndex((m) => m.role === 'user');
-      const conversationHistory = firstUserIdx >= 0 ? allHistory.slice(firstUserIdx) : [];
+        .map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        }));
+      const firstUserIdx = priorTurns.findIndex((m) => m.role === 'user');
+      const conversationHistory = firstUserIdx >= 0 ? priorTurns.slice(firstUserIdx) : [];
 
-      const fullHistory = [
-        { role: 'user',  parts: [{ text: systemInstruction }] },
-        { role: 'model', parts: [{ text: tr.sideChatAck }] },
+      const messages = [
+        { role: 'system', content: systemInstruction },
         ...conversationHistory,
+        { role: 'user', content: text },
       ];
 
-      const { usage: sideUsage } = await callStreamWithRetry(
-        () => {
-          const chatSession = ai.chats.create({
-            model: GEMINI_MODEL,
-            history: fullHistory,
-          });
-          return chatSession.sendMessageStream({ message: text });
-        },
+      const { usage: sideUsage } = await callOpenAIStreamWithRetry(
+        () => openai.chat.completions.create({
+          model: OPENAI_MODEL,
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
         (full) => setSideChats((prev) =>
           prev.map((c) =>
             c.id === chatId
@@ -966,7 +979,7 @@ export default function NonLinearChatInterface() {
           )
         ),
       );
-      const sideTokens = parseTokenUsage(sideUsage);
+      const sideTokens = parseOpenAITokenUsage(sideUsage);
       if (sideTokens) logApiTokenUsage({ location: 'side', ...sideTokens });
     } catch (err) {
       console.error('[사이드채팅 오류]', err);
