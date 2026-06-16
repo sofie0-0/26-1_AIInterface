@@ -87,7 +87,6 @@ export default function NonLinearChatInterface() {
     logParallelWindowCreate,
     logParallelWindowReactivate,
     logParallelWindowDelete,
-    logAiAnswerHeightSnapshot,
     logApiError,
     logApiTokenUsage,
   } = useExperimentLog();
@@ -361,56 +360,6 @@ export default function NonLinearChatInterface() {
   /* 우측 패널: 활성 스레드 (null이면 첫 번째) */
   const activeThreadId = activeSideChatId ?? sideChats[0]?.id ?? null;
   const activeThread   = sideChats.find((c) => c.id === activeThreadId) ?? null;
-
-  /* ── AI 답변 높이 측정 헬퍼 ── */
-  const measureAiAnswerHeight = useCallback((containerEl) => {
-    if (!containerEl) return { answerHeightPx: 0, answerCount: 0 };
-    const aiRows = containerEl.querySelectorAll('[data-msg-role="ai"]');
-    return {
-      answerHeightPx: Array.from(aiRows).reduce((sum, el) => sum + el.offsetHeight, 0),
-      answerCount:    aiRows.length,
-    };
-  }, []);
-
-  /* ── 병렬창 전환 시 이전 창 AI 답변 높이 스냅샷 ── */
-  const prevActiveThreadIdRef = useRef(null);
-  useEffect(() => {
-    const prevId = prevActiveThreadIdRef.current;
-    if (prevId !== null && prevId !== activeThreadId && sideScrollRef.current) {
-      const { answerHeightPx, answerCount } = measureAiAnswerHeight(sideScrollRef.current);
-      logAiAnswerHeightSnapshot({
-        trigger:        'parallel_window_switch',
-        section:        `parallel_window_${prevId}`,
-        answerHeightPx,
-        answerCount,
-      });
-    }
-    prevActiveThreadIdRef.current = activeThreadId;
-  }, [activeThreadId, measureAiAnswerHeight, logAiAnswerHeightSnapshot]);
-
-  /* ── 블록 종료 직전 메인 + 현재 활성 병렬창 AI 답변 높이 스냅샷 ── */
-  const saveAiAnswerHeights = useCallback(() => {
-    /* 메인 대화창 */
-    if (centerScrollRef.current) {
-      const { answerHeightPx, answerCount } = measureAiAnswerHeight(centerScrollRef.current);
-      logAiAnswerHeightSnapshot({
-        trigger:        'block_end',
-        section:        'main_canvas',
-        answerHeightPx,
-        answerCount,
-      });
-    }
-    /* 현재 활성 병렬창 */
-    if (activeThreadId && sideScrollRef.current) {
-      const { answerHeightPx, answerCount } = measureAiAnswerHeight(sideScrollRef.current);
-      logAiAnswerHeightSnapshot({
-        trigger:        'block_end',
-        section:        `parallel_window_${activeThreadId}`,
-        answerHeightPx,
-        answerCount,
-      });
-    }
-  }, [activeThreadId, measureAiAnswerHeight, logAiAnswerHeightSnapshot]);
 
   /* ── 세로 목차 돌출 바 위치 동기화 ── */
   useEffect(() => {
@@ -1605,7 +1554,7 @@ export default function NonLinearChatInterface() {
           <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
-          <StartButton onBeforeEndBlock={saveAiAnswerHeights} />
+          <StartButton />
         </div>
 
         {/* 메시지 스크롤 영역 */}

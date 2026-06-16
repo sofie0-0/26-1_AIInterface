@@ -539,21 +539,6 @@ export function ExperimentLogProvider({ children }) {
   );
 
   /* ═══════════════════════════════════════════════════════════════════════════
-   * [공통 지표1] AI_ANSWER_HEIGHT_SNAPSHOT
-   * AI 답변 블록들의 렌더링 높이 합계 스냅샷
-   * details: {
-   *   trigger: 'block_end' | 'parallel_window_switch',
-   *   section: 'main_canvas' | 'parallel_window_[id]',
-   *   answerHeightPx: number,   // AI 답변 블록 offsetHeight 합산
-   *   answerCount: number,      // AI 턴 수
-   * }
-   * ═══════════════════════════════════════════════════════════════════════════ */
-  const logAiAnswerHeightSnapshot = useCallback(
-    (details = {}) => logEvent('AI_ANSWER_HEIGHT_SNAPSHOT', details),
-    [logEvent],
-  );
-
-  /* ═══════════════════════════════════════════════════════════════════════════
    * 유틸리티
    * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -593,7 +578,6 @@ export function ExperimentLogProvider({ children }) {
     logParallelWindowCreate,
     logParallelWindowReactivate,
     logParallelWindowDelete,
-    logAiAnswerHeightSnapshot,
     logApiError,
     logApiTokenUsage,
 

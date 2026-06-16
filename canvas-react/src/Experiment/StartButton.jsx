@@ -151,17 +151,6 @@ function computeMetrics(logs, interfaceType) {
   const activeDurMs = aiWaitMs + mouseDurMs + scrollDurMs + typingDurMs + dragDurMs;
   const idleMs      = Math.max(0, totalMs - activeDurMs);
 
-  const sectionHeightMap = {};
-  for (const entry of logs) {
-    if (entry.eventType === 'AI_ANSWER_HEIGHT_SNAPSHOT') {
-      const { section, answerHeightPx } = entry.details ?? {};
-      if (section != null && answerHeightPx != null) {
-        sectionHeightMap[section] = answerHeightPx;
-      }
-    }
-  }
-  const aiAnswerTotalHeightPx = Object.values(sectionHeightMap).reduce((s, v) => s + v, 0);
-
   return {
     scrollDistPx, scrollDurSec: msToSec(scrollDurMs),
     mouseDistPx,  mouseDurSec:  msToSec(mouseDurMs),
@@ -169,7 +158,6 @@ function computeMetrics(logs, interfaceType) {
     m3Count, m3DurSec, m3Efficiency,
     interactions,
     idleSec: msToSec(idleMs),
-    aiAnswerTotalHeightPx,
     cntParallelWindowCreate,
     cntMemoCreate,
     cntMemoEdit,
@@ -191,7 +179,6 @@ const SUMMARY_HEADER = [
   'User ID', 'Interface',
   '지표1: 스크롤 거리(px)', '지표1: 스크롤 시간(초)',
   '지표1: 마우스 거리(px)', '지표1: 마우스 시간(초)',
-  '지표1: AI 답변 총 높이(px)',
   '지표2: 문맥 전환(회)',
   '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
   '지표4: 상호작용(회)',
@@ -218,7 +205,6 @@ function metricsToCells(userId, ifaceType, m) {
     userId, ifaceType,
     m.scrollDistPx, m.scrollDurSec,
     m.mouseDistPx,  m.mouseDurSec,
-    m.aiAnswerTotalHeightPx,
     m.contextSwitches,
     m.m3Count, m.m3DurSec, m.m3Efficiency,
     m.interactions,

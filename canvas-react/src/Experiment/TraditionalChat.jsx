@@ -75,7 +75,7 @@ function makeInitialChat(id = 1) {
 
 export default function TraditionalChat() {
   const { userId, blockIndex, selectedTopic } = useExperiment();
-  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logAiAnswerHeightSnapshot, logApiError, logApiTokenUsage } = useExperimentLog();
+  const { logPromptSubmitTraditional, startAIWait, stopAIWait, logApiError, logApiTokenUsage } = useExperimentLog();
 
   /* ── 채팅 기록 ── */
   const [chatHistory,  setChatHistory]  = useState(() => {
@@ -102,20 +102,6 @@ export default function TraditionalChat() {
   const inputRef          = useRef(null);
   const streamingAiMsgRef = useRef(null);
   const msgCounter = useRef((activeChat?.messages?.at(-1)?.id ?? 1) + 1);
-
-  /* ── 블록 종료 직전 AI 답변 높이 스냅샷 ── */
-  const saveAiAnswerHeight = useCallback(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const aiRows = container.querySelectorAll('[data-msg-role="ai"]');
-    const answerHeightPx = Array.from(aiRows).reduce((sum, el) => sum + el.offsetHeight, 0);
-    logAiAnswerHeightSnapshot({
-      trigger:        'block_end',
-      section:        'main_canvas',
-      answerHeightPx,
-      answerCount:    aiRows.length,
-    });
-  }, [logAiAnswerHeightSnapshot]);
 
   /* ── conversationHistory: 활성 채팅 기준 메모리 참조 ── */
   const conversationHistory = useRef(activeChat?.history ?? []);
@@ -457,7 +443,7 @@ export default function TraditionalChat() {
           <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
-          <StartButton onBeforeEndBlock={saveAiAnswerHeight} />
+          <StartButton />
         </div>
 
         {/* ── 메시지 목록 ── */}
