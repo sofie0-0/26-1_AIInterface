@@ -105,7 +105,13 @@ export function ExperimentLogProvider({ children }) {
    * ───────────────────────────────────────────────────────────────────────── */
   const mouseMoveAcc     = useRef({ dist: 0, startTime: null, lastX: null, lastY: null });
   const mouseMoveTimer   = useRef(null);
-  const scrollAcc        = useRef({ dist: 0, startTime: null, section: null });
+  const scrollAcc        = useRef({
+    dist: 0, startTime: null, section: null,
+    backwardDist: 0,
+    backwardCount: 0,
+    backwardDurMs: 0,
+    backwardActiveStart: null,
+  });
   const scrollTimer      = useRef(null);
   const scrollUpAcc      = useRef({ startTime: null, section: null, pauseTimer: null });
   const lastScrollPosMap = useRef(new Map());
@@ -190,7 +196,7 @@ export function ExperimentLogProvider({ children }) {
   /* ═══════════════════════════════════════════════════════════════════════════
    * [지표 1 & 3] SCROLL + SCROLL_PAUSE_UPWARD (section 포함)
    *
-   * · 300ms 정지 → SCROLL 플러시 (details.section 포함)
+   * · 300ms 정지 → SCROLL 플러시 (details.section + backward* 3필드 포함)
    * · 위방향 스크롤 후 300ms 정지 → 1000ms 대기 → SCROLL_PAUSE_UPWARD
    * ═══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
@@ -201,15 +207,26 @@ export function ExperimentLogProvider({ children }) {
 
     function flushScroll() {
       const acc = scrollAcc.current;
+      if (acc.backwardActiveStart !== null) {
+        acc.backwardDurMs += Date.now() - acc.backwardActiveStart;
+        acc.backwardActiveStart = null;
+      }
       if (acc.dist > 0 && acc.startTime !== null) {
         logEventRef.current('SCROLL', {
           distancePx: Math.round(acc.dist),
           durationMs: Date.now() - acc.startTime,
           section:    acc.section ?? 'main_canvas',
+          backwardDistancePx: Math.round(acc.backwardDist),
+          backwardCount:      acc.backwardCount,
+          backwardDurationMs: acc.backwardDurMs,
         });
         acc.dist    = 0;
         acc.startTime = null;
         acc.section = null;
+        acc.backwardDist = 0;
+        acc.backwardCount = 0;
+        acc.backwardDurMs = 0;
+        acc.backwardActiveStart = null;
       }
     }
 
@@ -233,6 +250,19 @@ export function ExperimentLogProvider({ children }) {
       if (acc.startTime === null) {
         acc.startTime = Date.now();
         acc.section   = section;
+      }
+
+      /* Backward Navigation 누적 (SCROLL details 확장) */
+      const now = Date.now();
+      if (delta < 0) {
+        acc.backwardDist += -delta;
+        if (acc.backwardActiveStart === null) {
+          acc.backwardActiveStart = now;
+          acc.backwardCount += 1;
+        }
+      } else if (delta > 0 && acc.backwardActiveStart !== null) {
+        acc.backwardDurMs += now - acc.backwardActiveStart;
+        acc.backwardActiveStart = null;
       }
 
       /* 위방향 스크롤 세션 시작 */
