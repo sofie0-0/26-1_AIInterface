@@ -310,7 +310,7 @@ export default function StartButton({ onBeforeEndBlock }) {
 
     clearLogs();
     setIsExperimentActive(false);
-    setExperimentPhase('writing');
+    setExperimentPhase('ready_next');
   }, [
     onBeforeEndBlock, logs, userId, interfaceType,
     getTotalExperimentMs, setExplorationDurationMs,

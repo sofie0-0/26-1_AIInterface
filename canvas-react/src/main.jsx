@@ -4,7 +4,6 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import './index.css';
 import { ExperimentProvider, useExperiment } from './Experiment/ExperimentContext.jsx';
 import { ExperimentLogProvider } from './Experiment/ExperimentLogContext.jsx';
-import ResultOverlay from './Experiment/ResultOverlay.jsx';
 import CompletionOverlay from './Experiment/CompletionOverlay.jsx';
 
 const ProposedChat    = lazy(() => import('./App.jsx'));
@@ -35,7 +34,6 @@ function ExperimentOverlayManager({ children }) {
   return (
     <>
       {children}
-      {experimentPhase === 'writing'    && <ResultOverlay />}
       {experimentPhase === 'completed'  && <CompletionOverlay />}
     </>
   );
