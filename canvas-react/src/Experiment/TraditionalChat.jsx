@@ -28,7 +28,6 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { useExperiment } from './ExperimentContext.jsx';
 import { useExperimentLog } from './ExperimentLogContext.jsx';
 import StartButton from './StartButton.jsx';
-import TaskPanel from './TaskPanel.jsx';
 import { OPENAI_API_KEY, OPENAI_MODEL } from '../constants.js';
 import {
   callOpenAIStreamWithRetry,
@@ -438,9 +437,6 @@ export default function TraditionalChat() {
               주제: {selectedTopic}
             </span>
           )}
-
-          {/* ── 과제 보기 패널 ── */}
-          <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
           <StartButton />

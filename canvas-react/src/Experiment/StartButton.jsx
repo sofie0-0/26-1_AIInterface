@@ -288,13 +288,13 @@ export default function StartButton({ onBeforeEndBlock }) {
   const navigate = useNavigate();
   const {
     isExperimentActive, setIsExperimentActive,
-    userId, interfaceType, blockIndex,
+    userId, interfaceType,
     experimentPhase, setExperimentPhase,
     setExplorationDurationMs,
   } = useExperiment();
   const { logs, clearLogs, getTotalExperimentMs } = useExperimentLog();
 
-  /* ── 탐색 종료 → ready_next / completed 로 이동 (다운로드는 ready_next 화면에서) ── */
+  /* ── 탐색 종료 → ready_next 로 이동 (다운로드는 ready_next 화면에서) ── */
   const handleEndBlock = useCallback(async () => {
     onBeforeEndBlock?.();
 
@@ -302,13 +302,9 @@ export default function StartButton({ onBeforeEndBlock }) {
     setExplorationDurationMs(durationMs);
 
     setIsExperimentActive(false);
-    if (blockIndex >= 2) {
-      setExperimentPhase('completed');
-    } else {
-      setExperimentPhase('ready_next');
-    }
+    setExperimentPhase('ready_next');
   }, [
-    onBeforeEndBlock, blockIndex,
+    onBeforeEndBlock,
     getTotalExperimentMs, setExplorationDurationMs,
     setIsExperimentActive, setExperimentPhase,
   ]);

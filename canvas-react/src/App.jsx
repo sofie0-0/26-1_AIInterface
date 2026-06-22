@@ -7,7 +7,6 @@ import React, {
   useState,
 } from 'react';
 import StartButton from './Experiment/StartButton.jsx';
-import TaskPanel from './Experiment/TaskPanel.jsx';
 import { useExperiment } from './Experiment/ExperimentContext.jsx';
 import { useExperimentLog } from './Experiment/ExperimentLogContext.jsx';
 import {
@@ -1549,9 +1548,6 @@ export default function NonLinearChatInterface() {
               주제: {ctxSelectedTopic}
             </span>
           )}
-
-          {/* ── 과제 보기 패널 ── */}
-          <TaskPanel />
 
           {/* ── [실험 시작] 임시 버튼 ── 실험 종료 후 이 한 줄만 제거 */}
           <StartButton />

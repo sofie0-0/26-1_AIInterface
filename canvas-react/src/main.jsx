@@ -4,7 +4,6 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import './index.css';
 import { ExperimentProvider, useExperiment } from './Experiment/ExperimentContext.jsx';
 import { ExperimentLogProvider } from './Experiment/ExperimentLogContext.jsx';
-import CompletionOverlay from './Experiment/CompletionOverlay.jsx';
 
 const ProposedChat    = lazy(() => import('./App.jsx'));
 const LoginPage       = lazy(() => import('./Experiment/LoginPage.jsx'));
@@ -30,13 +29,7 @@ function ProtectedRoute({ children }) {
  * App.jsx / TraditionalChat.jsx 를 수정하지 않아도 두 인터페이스 모두 커버.
  */
 function ExperimentOverlayManager({ children }) {
-  const { experimentPhase } = useExperiment();
-  return (
-    <>
-      {children}
-      {experimentPhase === 'completed'  && <CompletionOverlay />}
-    </>
-  );
+  return <>{children}</>;
 }
 
 const fallbackStyle = {

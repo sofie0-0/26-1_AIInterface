@@ -45,8 +45,7 @@ export function ExperimentProvider({ children }) {
    * experimentPhase: 실험 진행 단계 (페이지 이동 후에도 유지)
    *   'idle'       — 실험 시작 전 (또는 결과 제출 후 다음 세션 대기)
    *   'writing'    — 탐색 종료, 결과 작성 오버레이 표시 중 (로그 수집 OFF)
-   *   'ready_next' — Session 1 결과 제출 완료, 다음 세션 시작 버튼 대기
-   *   'completed'  — 모든 세션 완료, CompletionOverlay 표시
+   *   'ready_next' — 탐색 종료 후, 다음 세션 시작 / 다운로드 버튼 대기
    */
   const [experimentPhase, setExperimentPhase] = useState('idle');
 
