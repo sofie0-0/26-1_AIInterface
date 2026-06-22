@@ -288,34 +288,40 @@ export default function StartButton({ onBeforeEndBlock }) {
   const navigate = useNavigate();
   const {
     isExperimentActive, setIsExperimentActive,
-    userId, interfaceType,
+    userId, interfaceType, blockIndex,
     experimentPhase, setExperimentPhase,
     setExplorationDurationMs,
   } = useExperiment();
   const { logs, clearLogs, getTotalExperimentMs } = useExperimentLog();
 
-  /* ── 탐색 종료 → 즉시 xlsx 다운로드 + 결과 작성 화면으로 ── */
+  /* ── 탐색 종료 → ready_next / completed 로 이동 (다운로드는 ready_next 화면에서) ── */
   const handleEndBlock = useCallback(async () => {
     onBeforeEndBlock?.();
 
     const durationMs = getTotalExperimentMs();
     setExplorationDurationMs(durationMs);
 
+    setIsExperimentActive(false);
+    if (blockIndex >= 2) {
+      setExperimentPhase('completed');
+    } else {
+      setExperimentPhase('ready_next');
+    }
+  }, [
+    onBeforeEndBlock, blockIndex,
+    getTotalExperimentMs, setExplorationDurationMs,
+    setIsExperimentActive, setExperimentPhase,
+  ]);
+
+  const handleFinishExperiment = useCallback(async () => {
     const XLSX       = await import('xlsx');
     const exportType = interfaceType ?? 'unknown';
     const exportUser = userId || 'user';
     const wb         = buildBlockWorkbook(XLSX, exportUser, exportType, logs);
     const typeCode   = exportType === 'proposed' ? 'P' : exportType === 'traditional' ? 'T' : exportType;
     downloadWorkbook(XLSX, wb, `${formatLogDate()}_${exportUser}_${typeCode}.xlsx`);
-
     clearLogs();
-    setIsExperimentActive(false);
-    setExperimentPhase('ready_next');
-  }, [
-    onBeforeEndBlock, logs, userId, interfaceType,
-    getTotalExperimentMs, setExplorationDurationMs,
-    clearLogs, setIsExperimentActive, setExperimentPhase,
-  ]);
+  }, [logs, userId, interfaceType, clearLogs]);
 
   /* ── 다음 세션 시작 → SelectionPage로 이동 ── */
   const handleStartNext = useCallback(() => {
@@ -344,17 +350,27 @@ export default function StartButton({ onBeforeEndBlock }) {
   /* WRITING: 결과 작성 중 → 버튼 없음 (ResultOverlay가 화면 제어) */
   if (experimentPhase === 'writing') return null;
 
-  /* READY_NEXT: 결과 제출 완료 → "다음 세션 시작" */
+  /* READY_NEXT: 다음 세션 시작 + 다운로드 */
   if (experimentPhase === 'ready_next') {
     return (
-      <button
-        onClick={handleStartNext}
-        style={btnStyle('#dcfce7', '#15803d')}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#bbf7d0'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = '#dcfce7'; }}
-      >
-        다음 세션 시작
-      </button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleStartNext}
+          style={btnStyle('#dcfce7', '#15803d')}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#bbf7d0'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#dcfce7'; }}
+        >
+          다음 세션 시작
+        </button>
+        <button
+          onClick={handleFinishExperiment}
+          style={btnStyle('#fee2e2', '#b91c1c')}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#fecaca'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#fee2e2'; }}
+        >
+          다운로드
+        </button>
+      </div>
     );
   }
 
