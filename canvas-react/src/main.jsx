@@ -23,11 +23,6 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-/**
- * 전역 오버레이 관리자.
- * experimentPhase === 'writing' 이면 ResultOverlay를 children 위에 렌더링.
- * App.jsx / TraditionalChat.jsx 를 수정하지 않아도 두 인터페이스 모두 커버.
- */
 function ExperimentOverlayManager({ children }) {
   return <>{children}</>;
 }

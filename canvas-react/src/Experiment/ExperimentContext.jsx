@@ -38,13 +38,11 @@ export function ExperimentProvider({ children }) {
   const [isExperimentActive,     setIsExperimentActive]     = useState(false);
   const [selectedTopic,          setSelectedTopic]          = useState(null);
   const [explorationDurationMs,  setExplorationDurationMs]  = useState(0);
-  /** Session 1 결과를 임시 보관. Session 2 제출 시 합쳐서 xlsx 1개로 다운로드. */
   const [pendingResult,          setPendingResult]          = useState(null);
 
   /**
    * experimentPhase: 실험 진행 단계 (페이지 이동 후에도 유지)
-   *   'idle'       — 실험 시작 전 (또는 결과 제출 후 다음 세션 대기)
-   *   'writing'    — 탐색 종료, 결과 작성 오버레이 표시 중 (로그 수집 OFF)
+   *   'idle'       — 실험 시작 전 (또는 다음 세션 선택 대기)
    *   'ready_next' — 탐색 종료 후, 다음 세션 시작 / 다운로드 버튼 대기
    */
   const [experimentPhase, setExperimentPhase] = useState('idle');

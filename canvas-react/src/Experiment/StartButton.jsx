@@ -6,11 +6,9 @@
  * [idle]      노란색 "실험 시작" 버튼
  *   ↓ 클릭
  * [active]    빨간색 "탐색 종료" 버튼
- *   ↓ 클릭    → 탐색 로그 xlsx 즉시 다운로드
- *              → explorationDurationMs 저장
- *              → experimentPhase = 'writing' (결과 작성 오버레이 표시)
- * [writing]   버튼 없음 (ResultOverlay가 화면 제어)
- * [ready_next] 초록색 "다음 세션 시작" 버튼 → /experiment-select 이동
+ *   ↓ 클릭    → explorationDurationMs 저장, experimentPhase = 'ready_next'
+ * [ready_next] "다음 세션 시작" → /experiment-select 이동
+ *              "다운로드" → xlsx 저장 후 clearLogs()
  *
  * 실험 종료 후 이 컴포넌트 호출부(한 줄)만 제거하면 완전히 삭제됩니다.
  * ExperimentProvider + ExperimentLogProvider 하위에서만 사용 가능합니다.
@@ -343,7 +341,6 @@ export default function StartButton({ onBeforeEndBlock }) {
     );
   }
 
-  /* WRITING: 결과 작성 중 → 버튼 없음 (ResultOverlay가 화면 제어) */
   if (experimentPhase === 'writing') return null;
 
   /* READY_NEXT: 다음 세션 시작 + 다운로드 */
