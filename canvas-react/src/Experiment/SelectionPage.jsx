@@ -78,24 +78,23 @@ export default function SelectionPage() {
             display: 'flex', flexDirection: 'column', gap: 14,
             marginBottom: 28,
           }}>
-            <p style={instructionStyle}>
-              한 세션당 아래 제시된 주제 중 하나를 선택하여 자유롭게 탐색해 주십시오.
-            </p>
-            <p style={instructionStyle}>
-              탐색의 목적은 선택한 주제에 대해 학습하고, 아래 세 문항에 답할 수 있을 정도로 이해하는 것입니다.
-            </p>
-            <p style={instructionStyle}>
-              각 세션에서는 하나의 주제만 탐색합니다. 충분히 이해하여 세 문항에 모두 답할 수 있다고 판단되면 탐색을 종료해 주십시오.
-            </p>
-            <p style={{ ...instructionStyle, color: '#475569' }}>
-              탐색은 <strong style={{ color: '#1e293b' }}>"(선택한 주제)가 뭐야?"</strong>와 같은 질문으로 시작해 보세요.
-            </p>
             <p style={{
               ...instructionStyle,
               color: '#b91c1c', fontWeight: 700,
-              borderTop: '1px solid #fecaca', paddingTop: 12, marginTop: 2,
             }}>
-              반드시 채팅 화면 상단의 <strong style={{ color: '#991b1b' }}>[실험 시작]</strong> 버튼을 누른 후 대화를 시작해 주십시오.
+              실험을 시작하기 전에 반드시 채팅 화면 상단의 <strong style={{ color: '#991b1b' }}>[실험 시작]</strong> 버튼을 먼저 눌러 주십시오.
+            </p>
+            <p style={instructionStyle}>
+              각 세션에서는 아래 제시된 주제 중 <strong style={{ color: '#1e293b' }}>하나를 선택하여 자유롭게 탐색해 주십시오.</strong>
+            </p>
+            <p style={instructionStyle}>
+              <strong style={{ color: '#1e293b' }}>한 세션당 탐색 시간은 10분이며, 시간 내 자유롭게 대화를 진행해 주시면 됩니다.</strong>
+            </p>
+            <p style={instructionStyle}>
+              탐색의 목적은 <strong style={{ color: '#1e293b' }}>선택한 주제에 대해 탐색하고 학습하는 것</strong>입니다.
+            </p>
+            <p style={{ ...instructionStyle, color: '#475569' }}>
+              대화는 <strong style={{ color: '#1e293b' }}>&quot;(선택한 주제)는 무엇인가요?&quot;</strong> 와 같은 질문으로 시작하는 것을 권장합니다.
             </p>
           </div>
 
