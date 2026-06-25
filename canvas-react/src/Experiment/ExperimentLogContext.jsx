@@ -4,7 +4,7 @@
  * HCI 사용자 실험 전용 로그 수집 컨텍스트.
  *
  * ● isExperimentActive === true 인 순간부터 이벤트를 기록한다.
- * ● ready_next 화면에서 다운로드 버튼 클릭 시 xlsx 저장 후 clearLogs() 호출.
+ * ● ready_next 화면에서 다운로드 버튼 클릭 시 json/csv 저장 후 clearLogs() 호출.
  *
  * ■ 자동 수집 (글로벌 리스너)
  *   MOUSE_MOVE · SCROLL(+section) · SCROLL_PAUSE_UPWARD(+section) ·

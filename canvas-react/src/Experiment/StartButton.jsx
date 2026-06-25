@@ -8,7 +8,7 @@
  * [active]    빨간색 "탐색 종료" 버튼
  *   ↓ 클릭    → explorationDurationMs 저장, experimentPhase = 'ready_next'
  * [ready_next] "다음 세션 시작" → /experiment-select 이동
- *              "다운로드" → xlsx 저장 후 clearLogs()
+ *              "다운로드" → json(raw) + csv(structured) 저장 후 clearLogs()
  *
  * 실험 종료 후 이 컴포넌트 호출부(한 줄)만 제거하면 완전히 삭제됩니다.
  * ExperimentProvider + ExperimentLogProvider 하위에서만 사용 가능합니다.
@@ -169,8 +169,60 @@ function computeMetrics(logs, interfaceType) {
   };
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * groupLogsByBlockIndex(logs): 로그 배열 → 세션(blockIndex)별 그룹
+ *   반환: [{ blockIndex, interfaceType, logs }, ...]  (blockIndex 오름차순)
+ * ───────────────────────────────────────────────────────────────────────────── */
+function groupLogsByBlockIndex(logs) {
+  const map = new Map();
+  for (const entry of logs) {
+    const key = entry.blockIndex ?? 0;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(entry);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([blockIndex, sessionLogs]) => ({
+      blockIndex,
+      interfaceType: sessionLogs[0]?.interfaceType ?? 'unknown',
+      logs: sessionLogs,
+    }));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * buildRawJsonPayload(userId, sessions): raw 로그만 담은 JSON 객체
+ * ───────────────────────────────────────────────────────────────────────────── */
+function buildRawJsonPayload(userId, sessions) {
+  return {
+    userId,
+    exportedAt: new Date().toISOString(),
+    sessions: sessions.map((s) => ({
+      blockIndex:    s.blockIndex,
+      interfaceType: s.interfaceType,
+      logs:          s.logs,
+    })),
+  };
+}
+
+/** Blob → 파일 다운로드 (JSON·CSV 공통) */
+function downloadBlobFile(fileName, blob) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** JSON 객체 → .json 파일 다운로드 */
+function downloadJsonFile(fileName, payload) {
+  downloadBlobFile(fileName, new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json',
+  }));
+}
+
 /* ═════════════════════════════════════════════════════════════════════════════
- * XLSX 빌더 — 인터페이스 타입별 단일 파일 (2개 시트)
+ * CSV structured log — 세션별 지표 요약 (SUMMARY_HEADER 재사용)
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 const SUMMARY_HEADER = [
@@ -190,11 +242,6 @@ const SUMMARY_HEADER = [
   'Input 토큰(합계)',
   'Output 토큰(합계)',
   '총 토큰(합계)',
-];
-
-const RAW_HEADER = [
-  'Timestamp', 'User ID', 'Interface Type',
-  'Block Index', 'Event Type', 'Details',
 ];
 
 function metricsToCells(userId, ifaceType, m) {
@@ -219,64 +266,50 @@ function metricsToCells(userId, ifaceType, m) {
   ];
 }
 
-function logsToRows(logs) {
-  return logs.map((e) => [
-    e.timestamp,
-    e.userId,
-    e.interfaceType,
-    e.blockIndex,
-    e.eventType,
-    JSON.stringify(e.details ?? {}),
-  ]);
+/** CSV 셀 이스케이프 */
+function csvCell(value) {
+  const s = String(value ?? '');
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
 }
 
-/** 열 너비 자동 설정 */
-function setColWidths(ws, colCount) {
-  ws['!cols'] = Array.from({ length: colCount }, () => ({ wch: 22 }));
+const STRUCTURED_CSV_HEADER = ['Block Index', ...SUMMARY_HEADER];
+
+/**
+ * buildStructuredCsv(userId, sessions): 세션별 structured log → CSV 문자열
+ *   세션 1개 = 행 1개, computeMetrics는 세션 interfaceType 기준
+ */
+function buildStructuredCsv(userId, sessions) {
+  const rows = sessions.map((s) => {
+    const m = computeMetrics(s.logs, s.interfaceType);
+    return [s.blockIndex, ...metricsToCells(userId, s.interfaceType, m)];
+  });
+  return [STRUCTURED_CSV_HEADER, ...rows]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\n');
+}
+
+/** CSV 문자열 → .csv 파일 다운로드 (한글 호환 BOM 포함) */
+function downloadCsvFile(fileName, csvText) {
+  downloadBlobFile(fileName, new Blob(['\uFEFF' + csvText], {
+    type: 'text/csv;charset=utf-8',
+  }));
 }
 
 /**
- * buildBlockWorkbook(XLSX, userId, interfaceType, logs)
- *
- * 시트 1: Summary              — 지표 요약 행 1줄
- * 시트 2: Raw log [타입]       — 원시 로그 전체
+ * exportExperimentLogs(userId, logs)
+ *   세션별 분리 → json(raw) + csv(structured) 동시 저장
+ *   파일명: YYMMDD_userId.json / YYMMDD_userId.csv
  */
-function buildBlockWorkbook(XLSX, userId, interfaceType, logs) {
-  const wb = XLSX.utils.book_new();
-  const m  = computeMetrics(logs, interfaceType);
+function exportExperimentLogs(userId, logs) {
+  const sessions   = groupLogsByBlockIndex(logs);
+  const exportUser = userId || 'user';
+  const baseName   = `${formatLogDate()}_${exportUser}`;
 
-  /* 시트 1: Summary */
-  const summaryWs = XLSX.utils.aoa_to_sheet([
-    SUMMARY_HEADER,
-    metricsToCells(userId, interfaceType, m),
-  ]);
-  setColWidths(summaryWs, SUMMARY_HEADER.length);
-  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
-
-  /* 시트 2: Raw log [인터페이스 타입] */
-  const rawSheetName = `Raw log ${interfaceType.charAt(0).toUpperCase() + interfaceType.slice(1)}`;
-  const rawWs = XLSX.utils.aoa_to_sheet([
-    RAW_HEADER,
-    ...logsToRows(logs),
-  ]);
-  setColWidths(rawWs, RAW_HEADER.length);
-  XLSX.utils.book_append_sheet(wb, rawWs, rawSheetName);
-
-  return wb;
-}
-
-/** Workbook → .xlsx Blob 다운로드 */
-function downloadWorkbook(XLSX, wb, fileName) {
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob  = new Blob([wbout], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadJsonFile(`${baseName}.json`, buildRawJsonPayload(exportUser, sessions));
+  downloadCsvFile(`${baseName}.csv`, buildStructuredCsv(exportUser, sessions));
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════
@@ -286,14 +319,14 @@ export default function StartButton({ onBeforeEndBlock }) {
   const navigate = useNavigate();
   const {
     isExperimentActive, setIsExperimentActive,
-    userId, interfaceType,
+    userId,
     experimentPhase, setExperimentPhase,
     setExplorationDurationMs,
   } = useExperiment();
   const { logs, clearLogs, getTotalExperimentMs } = useExperimentLog();
 
   /* ── 탐색 종료 → ready_next 로 이동 (다운로드는 ready_next 화면에서) ── */
-  const handleEndBlock = useCallback(async () => {
+  const handleEndBlock = useCallback(() => {
     onBeforeEndBlock?.();
 
     const durationMs = getTotalExperimentMs();
@@ -307,15 +340,10 @@ export default function StartButton({ onBeforeEndBlock }) {
     setIsExperimentActive, setExperimentPhase,
   ]);
 
-  const handleFinishExperiment = useCallback(async () => {
-    const XLSX       = await import('xlsx');
-    const exportType = interfaceType ?? 'unknown';
-    const exportUser = userId || 'user';
-    const wb         = buildBlockWorkbook(XLSX, exportUser, exportType, logs);
-    const typeCode   = exportType === 'proposed' ? 'P' : exportType === 'traditional' ? 'T' : exportType;
-    downloadWorkbook(XLSX, wb, `${formatLogDate()}_${exportUser}_${typeCode}.xlsx`);
+  const handleFinishExperiment = useCallback(() => {
+    exportExperimentLogs(userId, logs);
     clearLogs();
-  }, [logs, userId, interfaceType, clearLogs]);
+  }, [logs, userId, clearLogs]);
 
   /* ── 다음 세션 시작 → SelectionPage로 이동 ── */
   const handleStartNext = useCallback(() => {
