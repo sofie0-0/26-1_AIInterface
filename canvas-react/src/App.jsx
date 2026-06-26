@@ -445,11 +445,9 @@ export default function NonLinearChatInterface() {
     // 사이드챗이면 우측 패널에서 해당 스레드 활성화
     if (sideChats.some((c) => c.id === id)) {
       const windowLabel = treeLabelMap[id] ?? String(id);
-      /* 이미 활성화된 창이면 재활성화, 처음이면 최초 이동(MAPS_TO_ELEMENT) */
-      if (id === activeSideChatId) {
+      /* 목차 탭과 동일: 다른 subchat으로 전환할 때만 Branch Revisit 기록 */
+      if (id !== activeSideChatId) {
         logParallelWindowReactivate({ windowId: `parallel_window_${windowLabel}` });
-      } else {
-        logMapsToElement({ targetType: 'parallel_window', targetId: `parallel_window_${windowLabel}` });
       }
       setActiveSideChatId(id);
       setFlashingId(id);
