@@ -176,22 +176,26 @@ function computeMetrics(logs, interfaceType) {
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 const SUMMARY_HEADER = [
-  'User ID', 'Interface',
-  '지표1: 스크롤 거리(px)', '지표1: 스크롤 시간(초)',
-  '지표1: 마우스 거리(px)', '지표1: 마우스 시간(초)',
-  '지표2: 문맥 전환(회)',
-  '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
-  '지표4: 상호작용(회)',
-  'Proposed: 추가 질문 생성(회)',
-  'Proposed: 메모 생성(회)',
-  'Proposed: 메모 편집 세션(회)',
-  'Proposed: 메모 삭제(회)',
-  'Proposed: 본문으로 이동(회)',
-  'Proposed: 메모 이동(회)',
-  'Proposed: 병렬 창 재방문(회)',
-  'Input 토큰(합계)',
-  'Output 토큰(합계)',
-  '총 토큰(합계)',
+  'Block Index',
+  'User ID',
+  'Interface',
+  'Backward Navigation Distance',
+  'Backward Navigation Count',
+  'Backward Navigation Duration',
+  'Branch Revisit Count',
+  'Total scroll distance',
+  'Total scroll duraition',
+  'Total mouse move distance',
+  'Total mouse move duraition',
+  'Total user prompts',
+  'Branch Create Count',
+  'Branch Delete Count',
+  'Memo Create Count',
+  'Memo Edit Count',
+  'Memo Delete Count',
+  'Memo DragDrop Count',
+  'Memo Maps To Body Count',
+  'Branch Maps To Body Count',
 ];
 
 const RAW_HEADER = [
@@ -202,22 +206,25 @@ const RAW_HEADER = [
 function metricsToCells(userId, ifaceType, m) {
   const isProposed = ifaceType === 'proposed';
   return [
-    userId, ifaceType,
-    m.scrollDistPx, m.scrollDurSec,
-    m.mouseDistPx,  m.mouseDurSec,
-    m.contextSwitches,
-    m.m3Count, m.m3DurSec, m.m3Efficiency,
-    m.interactions,
-    isProposed ? m.cntParallelWindowCreate     : '',
-    isProposed ? m.cntMemoCreate               : '',
-    isProposed ? m.cntMemoEdit                 : '',
-    isProposed ? m.cntMemoDelete               : '',
-    isProposed ? m.cntMapsToBody               : '',
-    isProposed ? m.cntMemoDragDrop             : '',
+    userId,
+    ifaceType,
+    m.backwardNavDistPx,   // TODO computeMetrics에 없음
+    m.backwardNavCount,     // TODO computeMetrics에 없음
+    m.backwardNavDurSec,    // TODO computeMetrics에 없음
     isProposed ? m.cntParallelWindowReactivate : '',
-    m.totalPromptTokens,
-    m.totalOutputTokens,
-    m.totalTokens,
+    m.scrollDistPx,
+    m.scrollDurSec,
+    m.mouseDistPx,
+    m.mouseDurSec,
+    m.cntUserPrompts,       // TODO computeMetrics에 없음
+    isProposed ? m.cntParallelWindowCreate : '',
+    m.cntParallelWindowDelete, // TODO computeMetrics에 없음
+    isProposed ? m.cntMemoCreate : '',
+    isProposed ? m.cntMemoEdit : '',
+    isProposed ? m.cntMemoDelete : '',
+    isProposed ? m.cntMemoDragDrop : '',
+    m.cntMemoMapsToBody,    // TODO computeMetrics에 없음
+    m.cntBranchMapsToBody,  // TODO computeMetrics에 없음
   ];
 }
 
