@@ -39,24 +39,31 @@ function formatLogDate(date = new Date()) {
 /* ─────────────────────────────────────────────────────────────────────────────
  * computeMetrics(logs, interfaceType): 로그 배열 → 지표 1~5 요약 객체
  * ─────────────────────────────────────────────────────────────────────────────*/
-function computeMetrics(logs, interfaceType) {
+export function computeMetrics(logs, interfaceType) {
   const isProposed = interfaceType === 'proposed';
 
   let scrollDistPx = 0, scrollDurMs = 0;
   let mouseDistPx  = 0, mouseDurMs  = 0;
+  let backwardNavDistPx = 0;
+  let backwardNavCount = 0;
+  let backwardNavDurMs = 0;
+
   let contextSwitches = 0;
   let m3Count = 0, m3DurMs = 0;
   let interactions = 0;
   let aiWaitMs = 0, typingDurMs = 0, dragDurMs = 0;
 
   let cntParallelWindowCreate     = 0;
+  let cntParallelWindowDelete     = 0;
   let cntMemoCreate               = 0;
   let cntMemoEdit                 = 0;
   let cntMemoDelete               = 0;
-  let cntMapsToBody               = 0;
+  let cntMemoMapsToBody           = 0;
+  let cntBranchMapsToBody         = 0;
   let cntMemoDragDrop             = 0;
   let cntParallelWindowReactivate = 0;
   let totalPromptTokens = 0, totalOutputTokens = 0, totalTokens = 0;
+  let cntUserPrompts = 0;
 
   const timestamps = logs
     .map((e) => new Date(e.timestamp).getTime())
@@ -72,6 +79,10 @@ function computeMetrics(logs, interfaceType) {
       case 'SCROLL':
         scrollDistPx += d.distancePx ?? 0;
         scrollDurMs  += d.durationMs ?? 0;
+
+        backwardNavDistPx += d.backwardDistancePx ?? 0;
+        backwardNavCount += d.backwardCount ?? 0;
+        backwardNavDurMs += d.backwardDurationMs ?? 0;
         break;
       case 'MOUSE_MOVE':
         mouseDistPx += d.distancePx ?? 0;
@@ -104,9 +115,13 @@ function computeMetrics(logs, interfaceType) {
         typingDurMs += d.durationMs ?? 0;
         break;
       case 'PROMPT_SUBMIT_TRADITIONAL':
+        cntUserPrompts += 1;
+
         if (!isProposed) interactions += 1;
         break;
       case 'PROMPT_SUBMIT':
+        cntUserPrompts += 1;
+
         if (isProposed) interactions += 1;
         break;
       case 'MEMO_CREATE':
@@ -118,14 +133,16 @@ function computeMetrics(logs, interfaceType) {
       case 'MEMO_DELETE':
         if (isProposed) { interactions += 1; cntMemoDelete += 1; }
         break;
-      case 'MAPS_TO_BODY':
-        if (isProposed) { interactions += 1; cntMapsToBody += 1; }
+        case 'MAPS_TO_BODY':
+        if (isProposed) { interactions += 1;
+          if (d?.sourceType === 'memo') { cntMemoMapsToBody += 1; }   
+          if (d?.sourceType === 'parallel_window') { cntBranchMapsToBody += 1; } }
         break;
       case 'PARALLEL_WINDOW_CREATE':
         if (isProposed) { interactions += 1; cntParallelWindowCreate += 1; }
         break;
       case 'PARALLEL_WINDOW_DELETE':
-        if (isProposed) interactions += 1;
+        if (isProposed) { interactions += 1; cntParallelWindowDelete += 1; }
         break;
       case 'MEMO_DRAG_DROP':
         dragDurMs += d.durationMs ?? 0;
@@ -152,16 +169,22 @@ function computeMetrics(logs, interfaceType) {
   return {
     scrollDistPx, scrollDurSec: msToSec(scrollDurMs),
     mouseDistPx,  mouseDurSec:  msToSec(mouseDurMs),
+    backwardNavDistPx,
+    backwardNavCount,
+    backwardNavDurSec: msToSec(backwardNavDurMs),
     contextSwitches,
     m3Count, m3DurSec, m3Efficiency,
     interactions,
     idleSec: msToSec(idleMs),
     cntParallelWindowCreate,
+    cntParallelWindowDelete,
     cntMemoCreate,
     cntMemoEdit,
     cntMemoDelete,
-    cntMapsToBody,
+    cntMemoMapsToBody,
+    cntBranchMapsToBody,
     cntMemoDragDrop,
+    cntUserPrompts,
     cntParallelWindowReactivate,
     totalPromptTokens,
     totalOutputTokens,
@@ -226,43 +249,50 @@ function downloadJsonFile(fileName, payload) {
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 const SUMMARY_HEADER = [
-  'User ID', 'Interface',
-  '지표1: 스크롤 거리(px)', '지표1: 스크롤 시간(초)',
-  '지표1: 마우스 거리(px)', '지표1: 마우스 시간(초)',
-  '지표2: 문맥 전환(회)',
-  '지표3: 정보 접근(회)', '지표3: 탐색 시간(초)', '지표3: 재접근 효율성(횟수/시간)',
-  '지표4: 상호작용(회)',
-  'Proposed: 추가 질문 생성(회)',
-  'Proposed: 메모 생성(회)',
-  'Proposed: 메모 편집 세션(회)',
-  'Proposed: 메모 삭제(회)',
-  'Proposed: 본문으로 이동(회)',
-  'Proposed: 메모 이동(회)',
-  'Proposed: 병렬 창 재방문(회)',
-  'Input 토큰(합계)',
-  'Output 토큰(합계)',
-  '총 토큰(합계)',
+  'Block Index',
+  'User ID',
+  'Interface',
+  'Backward Navigation Distance',
+  'Backward Navigation Count',
+  'Backward Navigation Duration',
+  'Branch Revisit Count',
+  'Total scroll distance',
+  'Total scroll duraition',
+  'Total mouse move distance',
+  'Total mouse move duraition',
+  'Total user prompts',
+  'Branch Create Count',
+  'Branch Delete Count',
+  'Memo Create Count',
+  'Memo Edit Count',
+  'Memo Delete Count',
+  'Memo DragDrop Count',
+  'Memo Maps To Body Count',
+  'Branch Maps To Body Count',
 ];
 
 function metricsToCells(userId, ifaceType, m) {
   const isProposed = ifaceType === 'proposed';
   return [
-    userId, ifaceType,
-    m.scrollDistPx, m.scrollDurSec,
-    m.mouseDistPx,  m.mouseDurSec,
-    m.contextSwitches,
-    m.m3Count, m.m3DurSec, m.m3Efficiency,
-    m.interactions,
-    isProposed ? m.cntParallelWindowCreate     : '',
-    isProposed ? m.cntMemoCreate               : '',
-    isProposed ? m.cntMemoEdit                 : '',
-    isProposed ? m.cntMemoDelete               : '',
-    isProposed ? m.cntMapsToBody               : '',
-    isProposed ? m.cntMemoDragDrop             : '',
+    userId,
+    ifaceType,
+    m.backwardNavDistPx,   // TODO computeMetrics에 없음
+    m.backwardNavCount,     // TODO computeMetrics에 없음
+    m.backwardNavDurSec,    // TODO computeMetrics에 없음
     isProposed ? m.cntParallelWindowReactivate : '',
-    m.totalPromptTokens,
-    m.totalOutputTokens,
-    m.totalTokens,
+    m.scrollDistPx,
+    m.scrollDurSec,
+    m.mouseDistPx,
+    m.mouseDurSec,
+    m.cntUserPrompts,       // TODO computeMetrics에 없음
+    isProposed ? m.cntParallelWindowCreate : '',
+    m.cntParallelWindowDelete, // TODO computeMetrics에 없음
+    isProposed ? m.cntMemoCreate : '',
+    isProposed ? m.cntMemoEdit : '',
+    isProposed ? m.cntMemoDelete : '',
+    isProposed ? m.cntMemoDragDrop : '',
+    m.cntMemoMapsToBody,    // TODO computeMetrics에 없음
+    m.cntBranchMapsToBody,  // TODO computeMetrics에 없음
   ];
 }
 
