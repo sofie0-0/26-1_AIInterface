@@ -8,7 +8,7 @@
  * [active]    빨간색 "탐색 종료" 버튼
  *   ↓ 클릭    → explorationDurationMs 저장, experimentPhase = 'ready_next'
  * [ready_next] "다음 세션 시작" → /experiment-select 이동
- *              "다운로드" → json(raw) + csv(structured) 저장 후 clearLogs()
+ *              "다운로드" → zip(json + csv) 저장 후 clearLogs()
  *
  * 실험 종료 후 이 컴포넌트 호출부(한 줄)만 제거하면 완전히 삭제됩니다.
  * ExperimentProvider + ExperimentLogProvider 하위에서만 사용 가능합니다.
@@ -16,6 +16,7 @@
  */
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import JSZip from 'jszip';
 import { useExperiment } from './ExperimentContext';
 import { useExperimentLog } from './ExperimentLogContext';
 
@@ -237,13 +238,6 @@ function downloadBlobFile(fileName, blob) {
   URL.revokeObjectURL(url);
 }
 
-/** JSON 객체 → .json 파일 다운로드 */
-function downloadJsonFile(fileName, payload) {
-  downloadBlobFile(fileName, new Blob([JSON.stringify(payload, null, 2)], {
-    type: 'application/json',
-  }));
-}
-
 /* ═════════════════════════════════════════════════════════════════════════════
  * CSV structured log — 세션별 지표 요약 (SUMMARY_HEADER 재사용)
  * ═════════════════════════════════════════════════════════════════════════════ */
@@ -320,25 +314,25 @@ function buildStructuredCsv(userId, sessions) {
     .join('\n');
 }
 
-/** CSV 문자열 → .csv 파일 다운로드 (한글 호환 BOM 포함) */
-function downloadCsvFile(fileName, csvText) {
-  downloadBlobFile(fileName, new Blob(['\uFEFF' + csvText], {
-    type: 'text/csv;charset=utf-8',
-  }));
-}
-
 /**
  * exportExperimentLogs(userId, logs)
- *   세션별 분리 → json(raw) + csv(structured) 동시 저장
- *   파일명: YYMMDD_userId.json / YYMMDD_userId.csv
+ *   세션별 분리 → zip(raw json + structured csv) 1개 저장
+ *   파일명: YYMMDD_userId.zip
  */
-function exportExperimentLogs(userId, logs) {
+async function exportExperimentLogs(userId, logs) {
   const sessions   = groupLogsByBlockIndex(logs);
   const exportUser = userId || 'user';
   const baseName   = `${formatLogDate()}_${exportUser}`;
 
-  downloadJsonFile(`${baseName}.json`, buildRawJsonPayload(exportUser, sessions));
-  downloadCsvFile(`${baseName}.csv`, buildStructuredCsv(exportUser, sessions));
+  const jsonText = JSON.stringify(buildRawJsonPayload(exportUser, sessions), null, 2);
+  const csvText  = '\uFEFF' + buildStructuredCsv(exportUser, sessions);
+
+  const zip = new JSZip();
+  zip.file(`${baseName}.json`, jsonText);
+  zip.file(`${baseName}.csv`, csvText);
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  downloadBlobFile(`${baseName}.zip`, blob);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════════
@@ -369,8 +363,8 @@ export default function StartButton({ onBeforeEndBlock }) {
     setIsExperimentActive, setExperimentPhase,
   ]);
 
-  const handleFinishExperiment = useCallback(() => {
-    exportExperimentLogs(userId, logs);
+  const handleFinishExperiment = useCallback(async () => {
+    await exportExperimentLogs(userId, logs);
     clearLogs();
   }, [logs, userId, clearLogs]);
 
