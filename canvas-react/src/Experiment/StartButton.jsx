@@ -249,7 +249,6 @@ function downloadJsonFile(fileName, payload) {
  * ═════════════════════════════════════════════════════════════════════════════ */
 
 const SUMMARY_HEADER = [
-  'Block Index',
   'User ID',
   'Interface',
   'Backward Navigation Distance',
@@ -259,7 +258,7 @@ const SUMMARY_HEADER = [
   'Total scroll distance',
   'Total scroll duraition',
   'Total mouse move distance',
-  'Total mouse move duraition',
+  'Total mouse move duration',
   'Total user prompts',
   'Branch Create Count',
   'Branch Delete Count',
