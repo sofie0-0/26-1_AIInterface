@@ -897,8 +897,7 @@ export default function NonLinearChatInterface() {
           role: m.sender === 'user' ? 'user' : 'assistant',
           content: m.text,
         }));
-      const firstUserIdx = priorTurns.findIndex((m) => m.role === 'user');
-      const conversationHistory = firstUserIdx >= 0 ? priorTurns.slice(firstUserIdx) : [];
+      const conversationHistory = priorTurns;
 
       const messages = [
         { role: 'system', content: systemInstruction },

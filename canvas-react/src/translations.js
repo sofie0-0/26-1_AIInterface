@@ -43,7 +43,7 @@ export const translations = {
     systemInstruction: '반드시 한국어로 답변하세요.',
     sideChatAck: '네, 위 지침에 따라 답변하겠습니다.',
     sideChatSystemBase:
-`너는 학습 보조원이다. 추가 질문 답변은 반드시 아래 구조·형식을 따른다.
+`추가 질문 답변은 반드시 아래 구조·형식을 따른다.
 
 [필수 구조 — 메인 창과 같은 계층 가독성]
 1. 인사말·도입 문장 없이 바로 본론으로 시작한다.
