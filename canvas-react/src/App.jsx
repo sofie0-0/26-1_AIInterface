@@ -889,7 +889,7 @@ export default function NonLinearChatInterface() {
         .map((m) => `${m.sender === 'user' ? tr.aiUser : tr.aiAI}: ${m.text}`)
         .join('\n');
       const systemInstruction =
-        `${tr.sideChatSystemBase}\n\n${tr.sideChatContextPrefix(mainCtx)}`;
+        `${tr.sideChatSystemBase}\n\n${tr.sideChatContextPrefix(mainCtx, chat.sourceText)}`;
 
       const priorTurns = (chat.messages || [])
         .filter((m) => !(m.sender === 'ai' && m.text === ''))

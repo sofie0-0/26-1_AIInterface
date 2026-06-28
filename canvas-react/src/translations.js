@@ -40,7 +40,7 @@ export const translations = {
     ghostTitles: ['질문 1', '질문 2', '질문 3'],
     aiUser: '사용자',
     aiAI: 'AI',
-    systemInstruction: '반드시 한국어로 답변하세요. 계층적인 대화 구조를 유지하세요.',
+    systemInstruction: '반드시 한국어로 답변하세요.',
     sideChatAck: '네, 위 지침에 따라 답변하겠습니다.',
     sideChatSystemBase:
 `너는 학습 보조원이다. 추가 질문 답변은 반드시 아래 구조·형식을 따른다.
@@ -53,8 +53,12 @@ export const translations = {
 5. 각 하위 불렛은 1~2문장만 허용한다. 불렛 개수는 번호당 1~3개.
 6. 마크다운 굵게 표기는 한 문장에 핵심 단어 하나 정도만 적용한다. 번호 줄·불렛 줄 전체를 굵게 하지 않는다.
 7. 말투는 사실 중심으로 건조하게 유지한다.`,
-    sideChatContextPrefix: (mainCtx) =>
+    sideChatContextPrefix: (mainCtx, sourceText) =>
 `메인 대화 맥락을 반드시 참고하여, 이 포스트잇에서 이어지는 추가 질문에만 답하라.
+사용자는 아래 [핵심 참조 텍스트]를 하이라이트하여 이 대화를 열었다. 이 텍스트를 대화의 핵심 주제로 삼아 답하라.
+
+[핵심 참조 텍스트]
+"${sourceText}"
 
 [메인 대화 내용]
 ${mainCtx}`,
@@ -99,7 +103,7 @@ ${mainCtx}`,
     ghostTitles: ['Thread 1', 'Thread 2', 'Thread 3'],
     aiUser: 'User',
     aiAI: 'AI',
-    systemInstruction: 'IMPORTANT: You must respond in English ONLY. Maintain the hierarchical thread structure.',
+    systemInstruction: 'IMPORTANT: You must respond in English ONLY.',
     sideChatAck: 'Understood. I will follow the instructions above.',
     sideChatSystemBase:
 `You are a learning assistant. Follow the structure and format below for all responses.
@@ -112,8 +116,12 @@ ${mainCtx}`,
 5. Each sub-bullet is limited to 1–2 sentences. Use 1–3 sub-bullets per numbered item.
 6. Apply bold markdown sparingly — at most one key term per sentence. Do not bold entire lines.
 7. Keep the tone factual and concise.`,
-    sideChatContextPrefix: (mainCtx) =>
+    sideChatContextPrefix: (mainCtx, sourceText) =>
 `Refer to the main conversation context and answer only the follow-up question in this thread.
+The user highlighted the [Key Reference Text] below to open this conversation. Treat this text as the core topic of discussion.
+
+[Key Reference Text]
+"${sourceText}"
 
 [Main Conversation]
 ${mainCtx}`,
