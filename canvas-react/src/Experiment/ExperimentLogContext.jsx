@@ -11,7 +11,7 @@
  *   CONTEXT_SWITCH · KEYBOARD_TYPING
  *
  * ■ 컴포넌트에서 명시적으로 호출
- *   [공통]  AI_RESPONSE_WAIT · API_TOKEN_USAGE · API_ERROR
+ *   [공통]  EXPERIMENT_START · AI_RESPONSE_WAIT · API_TOKEN_USAGE · API_ERROR
  *   [Traditional]  PROMPT_SUBMIT_TRADITIONAL
  *   [Proposed]  PROMPT_SUBMIT · MEMO_CREATE · MEMO_EDIT · MEMO_DELETE ·
  *               MAPS_TO_BODY · MAPS_TO_ELEMENT · MEMO_DRAG_DROP ·
@@ -55,15 +55,6 @@ export function ExperimentLogProvider({ children }) {
   /* ── 실험 시작 시각 ── */
   const experimentStartTimeRef = useRef(null);
 
-  useEffect(() => {
-    if (isExperimentActive && experimentStartTimeRef.current === null) {
-      experimentStartTimeRef.current = Date.now();
-    }
-    if (!isExperimentActive) {
-      experimentStartTimeRef.current = null;
-    }
-  }, [isExperimentActive]);
-
   /* ── userId 변경 시 로그 전체 초기화 (다른 사용자 데이터 혼입 방지) ── */
   const prevUserIdRef = useRef(userId);
   useEffect(() => {
@@ -99,6 +90,17 @@ export function ExperimentLogProvider({ children }) {
   useEffect(() => { logEventRef.current      = logEvent; },      [logEvent]);
   useEffect(() => { isActiveRef.current      = isExperimentActive; }, [isExperimentActive]);
   useEffect(() => { interfaceTypeRef.current = interfaceType; },  [interfaceType]);
+
+  /* ── [실험 시작] 클릭 시 EXPERIMENT_START 기록 (CSV 10분 창 기준 시각) ── */
+  useEffect(() => {
+    if (!isExperimentActive) {
+      experimentStartTimeRef.current = null;
+      return;
+    }
+    if (experimentStartTimeRef.current !== null) return;
+    experimentStartTimeRef.current = Date.now();
+    logEventRef.current('EXPERIMENT_START', {});
+  }, [isExperimentActive]);
 
   /* ─────────────────────────────────────────────────────────────────────────
    * 내부 누적 refs

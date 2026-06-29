@@ -240,7 +240,38 @@ function downloadBlobFile(fileName, blob) {
 
 /* ═════════════════════════════════════════════════════════════════════════════
  * CSV structured log — 세션별 지표 요약 (SUMMARY_HEADER 재사용)
+ *   CSV만 EXPERIMENT_START 기준 10분 창 로그로 computeMetrics (JSON은 전체 유지)
  * ═════════════════════════════════════════════════════════════════════════════ */
+
+/** CSV 지표 산출 시간 창 — [실험 시작] 클릭 후 10분 */
+const METRICS_WINDOW_MS = 10 * 60 * 1000;
+
+function parseLogTime(entry) {
+  const t = new Date(entry.timestamp).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/** 세션 시작 시각: EXPERIMENT_START 우선, 없으면 첫 로그(구버전 호환) */
+function getSessionStartMs(logs) {
+  const startEntry = logs.find((e) => e.eventType === 'EXPERIMENT_START');
+  if (startEntry) {
+    const t = parseLogTime(startEntry);
+    if (t !== null) return t;
+  }
+  const times = logs.map(parseLogTime).filter((t) => t !== null);
+  return times.length ? Math.min(...times) : null;
+}
+
+/** CSV용: EXPERIMENT_START + 10분 이내 로그만 반환 */
+function filterLogsForMetricsWindow(logs, windowMs = METRICS_WINDOW_MS) {
+  const sessionStart = getSessionStartMs(logs);
+  if (sessionStart === null) return [];
+  const cutoff = sessionStart + windowMs;
+  return logs.filter((e) => {
+    const t = parseLogTime(e);
+    return t !== null && t <= cutoff;
+  });
+}
 
 const SUMMARY_HEADER = [
   'User ID',
@@ -306,7 +337,8 @@ const STRUCTURED_CSV_HEADER = ['Block Index', ...SUMMARY_HEADER];
  */
 function buildStructuredCsv(userId, sessions) {
   const rows = sessions.map((s) => {
-    const m = computeMetrics(s.logs, s.interfaceType);
+    const windowedLogs = filterLogsForMetricsWindow(s.logs);
+    const m = computeMetrics(windowedLogs, s.interfaceType);
     return [s.blockIndex, ...metricsToCells(userId, s.interfaceType, m)];
   });
   return [STRUCTURED_CSV_HEADER, ...rows]
